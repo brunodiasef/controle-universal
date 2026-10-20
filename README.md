@@ -22,7 +22,8 @@ Quando o caminho direto falha e a ponte está configurada, o app passa pela pont
 **O que cada sistema faz:**
 - Setas, OK, voltar, home, volume, canais, mídia e ligar/desligar: todos.
 - Abrir Netflix, YouTube e Prime Video: todos, menos a Philips sem Android.
-- Digitar texto: Samsung, LG, Roku e TV Box (ADB).
+- Digitar texto **ao vivo** (cada letra aparece na hora na TV): Samsung, LG, Roku e TV Box (ADB). O botão BUSCAR abre a busca da TV e o teclado juntos.
+- **Touchpad** (botão TOUCH): deslizar move a seleção, tocar é OK, segurar parado continua andando. Funciona em todas as marcas.
 
 ## Três jeitos de usar
 

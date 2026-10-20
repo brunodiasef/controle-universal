@@ -24,6 +24,8 @@ export interface LgClient {
   launch(ip: string, appId: string): Promise<void>;
   text(ip: string, text: string): Promise<void>;
   input(ip: string, inputId: string): Promise<void>;
+  deleteChars(ip: string, count: number): Promise<void>;
+  enter(ip: string): Promise<void>;
   close(): void;
 }
 

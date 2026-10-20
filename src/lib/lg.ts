@@ -3,7 +3,7 @@
 import keymaps from '../../shared/keymaps.json';
 import { createLgClient, LgConnectError, LgRefused } from '../../shared/lg-protocol.js';
 import { loadLgKey, saveLgKey } from './storage';
-import type { RemoteAction, StreamingApp } from './types';
+import type { RemoteAction, StreamingApp, TypeOp } from './types';
 
 const client = createLgClient({
   createSocket: url => new WebSocket(url),
@@ -35,6 +35,13 @@ export const lg = {
   key: (ip: string, action: RemoteAction) => call(ip, () => client.press(ip, keymaps.lg.keys[action])),
   launch: (ip: string, app: StreamingApp) => call(ip, () => client.launch(ip, keymaps.lg.apps[app][0])),
   text: (ip: string, text: string) => call(ip, () => client.text(ip, text)),
+  type: (ip: string, ops: TypeOp[]) => call(ip, async () => {
+    for (const op of ops) {
+      if (op.type === 'text' || op.type === 'replace') await client.text(ip, op.value);
+      else if (op.type === 'backspace') await client.deleteChars(ip, op.count);
+      else await client.enter(ip);
+    }
+  }),
   input: (ip: string, choice: string) => call(ip, () => client.input(ip, (keymaps.lg.inputs as Record<string, string>)[choice])),
   certificateUrl: (ip: string) => `https://${ip}:3001/`,
 };

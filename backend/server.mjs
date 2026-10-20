@@ -433,6 +433,41 @@ async function sendText(device, text) {
   await adbShell(device, ['input', 'text', adbText(text)]);
   return 'Texto enviado à TV Box.';
 }
+// Digitação ao vivo: lista curta de operações (texto, apagar, enter, substituir) já validada aqui.
+function parseTypeOps(ops) {
+  if (!Array.isArray(ops) || ops.length === 0 || ops.length > 50) throw new HttpError(400, 'Envie de 1 a 50 operações de digitação.');
+  return ops.map(op => {
+    if ((op?.type === 'text' || op?.type === 'replace') && typeof op.value === 'string' && op.value.length <= 200 && (op.type === 'replace' || op.value.length > 0)) return { type: op.type, value: op.value };
+    if (op?.type === 'backspace' && Number.isInteger(op.count) && op.count > 0 && op.count <= 200) return { type: 'backspace', count: op.count };
+    if (op?.type === 'enter') return { type: 'enter' };
+    throw new HttpError(400, 'Operação de digitação inválida.');
+  });
+}
+async function typeOps(device, rawOps) {
+  const { platform, ip } = device;
+  const ops = parseTypeOps(rawOps);
+  for (const op of ops) {
+    if (platform === 'roku') {
+      if (op.type === 'text' || op.type === 'replace') { for (const ch of op.value) await rokuPost(ip, `keypress/Lit_${encodeURIComponent(ch)}`); }
+      else if (op.type === 'backspace') { for (let i = 0; i < op.count; i++) await rokuPost(ip, 'keypress/Backspace'); }
+      else await rokuPost(ip, 'keypress/Enter');
+    } else if (platform === 'lg') {
+      if (op.type === 'text' || op.type === 'replace') await lgCall(() => lg.text(ip, op.value));
+      else if (op.type === 'backspace') await lgCall(() => lg.deleteChars(ip, op.count));
+      else await lgCall(() => lg.enter(ip));
+    } else if (platform === 'samsung') {
+      if (op.type === 'enter') await samsungSend(ip, { method: 'ms.remote.control', params: { Cmd: '', DataOfCmd: '', Option: 'false', TypeOfRemote: 'SendInputEnd' } });
+      else if (op.type !== 'backspace') await samsung.text(ip, op.value);
+    } else if (platform === 'android') {
+      if (op.type === 'text' || op.type === 'replace') { if (op.value) await adbShell(device, ['input', 'text', adbText(op.value)]); }
+      else if (op.type === 'backspace') await adbShell(device, ['input', 'keyevent', ...Array(op.count).fill('67')]);
+      else await adbShell(device, ['input', 'keyevent', '66']);
+    } else {
+      throw new HttpError(501, 'Digitar pelo app ainda não funciona neste sistema. Use o teclado na tela da TV.');
+    }
+  }
+  return 'ok';
+}
 async function selectInput(device, choice) {
   const { platform, ip } = device;
   const map = keymaps[platform];
@@ -495,6 +530,7 @@ const routes = {
   'POST /api/command': async body => ({ ok: true, message: await command(parseDevice(body), body.action) }),
   'POST /api/app': async body => ({ ok: true, message: await launchApp(parseDevice(body), body.app) }),
   'POST /api/text': async body => ({ ok: true, message: await sendText(parseDevice(body), body.text) }),
+  'POST /api/type': async body => ({ ok: true, message: await typeOps(parseDevice(body), body.ops) }),
   'POST /api/input': async body => ({ ok: true, message: await selectInput(parseDevice(body), body.input) }),
   'POST /api/adb-pair': async body => ({ ok: true, message: await pairAdb(body) }),
   'POST /api/googletv/pair/start': async body => ({ ok: true, message: await startGoogleTvPairing(body) }),

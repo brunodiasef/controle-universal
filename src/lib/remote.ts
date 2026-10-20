@@ -6,7 +6,7 @@ import { bridgeRequest, isBridgeReady } from './bridge';
 import { lg } from './lg';
 import { roku } from './roku';
 import { samsung } from './samsung';
-import { errorMessage, type BridgeConfig, type DiscoveredDevice, type Device, type Platform, type RemoteAction, type StreamingApp } from './types';
+import { TYPING_MODE, errorMessage, type BridgeConfig, type DiscoveredDevice, type Device, type Platform, type RemoteAction, type StreamingApp, type TypeOp } from './types';
 
 export type RemoteContext = { device: Device; bridge: BridgeConfig };
 
@@ -102,6 +102,14 @@ export async function sendText(ctx: RemoteContext, text: string): Promise<string
     await driver.text(ip, text);
     return platform === 'roku' ? 'Texto enviado.' : 'Texto enviado. Ele aparece se o teclado da TV estiver aberto.';
   }), '/text', { text });
+}
+
+/** Digitação ao vivo: envia para a TV o que mudou no campo de texto do celular. */
+export async function typeOps(ctx: RemoteContext, ops: TypeOp[]): Promise<void> {
+  const { ip, platform } = ctx.device;
+  if (!TYPING_MODE[platform]) throw new Error('Digitar pelo app ainda não funciona neste sistema. Use as setas e o teclado na tela da TV.');
+  const driver = platform === 'roku' ? roku : platform === 'lg' ? lg : platform === 'samsung' ? samsung : null;
+  await route(ctx, driver && (async () => { await driver.type(ip, ops); return ''; }), '/type', { ops });
 }
 
 /** Roku e LG trocam direto para a entrada escolhida; os demais só abrem o menu de entradas da TV. */

@@ -3,7 +3,7 @@
 // e só depois que o certificado próprio da TV foi aceito em https://IP:8002.
 import keymaps from '../../shared/keymaps.json';
 import { loadSamsungToken, saveSamsungToken } from './storage';
-import type { RemoteAction, StreamingApp } from './types';
+import type { RemoteAction, StreamingApp, TypeOp } from './types';
 
 const APP_NAME = btoa('SmartRemote');
 const sockets = new Map<string, WebSocket>();
@@ -112,6 +112,16 @@ export const samsung = {
     method: 'ms.remote.control',
     params: { Cmd: 'Click', DataOfCmd: keymaps.samsung.input, Option: 'false', TypeOfRemote: 'SendRemoteKey' },
   }),
+  /** Digitação ao vivo: a Samsung recebe o texto inteiro do campo a cada mudança. */
+  async type(ip: string, ops: TypeOp[]) {
+    for (const op of ops) {
+      if (op.type === 'enter') {
+        await send(ip, { method: 'ms.remote.control', params: { Cmd: '', DataOfCmd: '', Option: 'false', TypeOfRemote: 'SendInputEnd' } });
+      } else if (op.type === 'replace' || op.type === 'text') {
+        await send(ip, { method: 'ms.remote.control', params: { Cmd: base64Utf8(op.value), DataOfCmd: 'base64', TypeOfRemote: 'SendInputString' } });
+      }
+    }
+  },
   text: (ip: string, text: string) => send(ip, {
     method: 'ms.remote.control',
     params: { Cmd: base64Utf8(text), DataOfCmd: 'base64', TypeOfRemote: 'SendInputString' },

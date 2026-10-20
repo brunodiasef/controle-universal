@@ -173,6 +173,8 @@ export function createLgClient({ createSocket, loadKey, saveKey, urls }) {
     },
     launch: async (ip, appId) => { await request(ip, 'ssap://system.launcher/launch', { id: appId }); },
     text: async (ip, text) => { await request(ip, 'ssap://com.webos.service.ime/insertText', { text, replace: 0 }); },
+    deleteChars: async (ip, count) => { await request(ip, 'ssap://com.webos.service.ime/deleteCharacters', { count }); },
+    enter: async ip => { await request(ip, 'ssap://com.webos.service.ime/sendEnterKey'); },
     // Entradas: "@livetv" volta para a TV aberta; o resto troca direto para HDMI_1, AV_1 etc.
     async input(ip, inputId) {
       if (inputId === '@livetv') await request(ip, 'ssap://system.launcher/launch', { id: 'com.webos.app.livetv' });

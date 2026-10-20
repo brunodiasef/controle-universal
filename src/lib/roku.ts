@@ -1,7 +1,7 @@
 // Roku: protocolo ECP, HTTP simples na porta 8060.
 // O Roku não envia cabeçalhos CORS, então usamos no-cors: o pedido chega, mas a resposta fica oculta.
 import keymaps from '../../shared/keymaps.json';
-import { withTimeout, type RemoteAction, type StreamingApp } from './types';
+import { withTimeout, type RemoteAction, type StreamingApp, type TypeOp } from './types';
 
 function blockedMessage(ip: string): string {
   if (location.protocol === 'https:') {
@@ -26,6 +26,18 @@ export const roku = {
   key: (ip: string, action: RemoteAction) => request(ip, `keypress/${keymaps.roku.keys[action]}`, 'POST'),
   launch: (ip: string, app: StreamingApp) => request(ip, `launch/${keymaps.roku.apps[app][0]}`, 'POST'),
   input: (ip: string, choice: string) => request(ip, `keypress/${(keymaps.roku.inputs as Record<string, string>)[choice]}`, 'POST'),
+  /** Digitação ao vivo: letras com Lit_, apagar com Backspace e confirmar com Enter. */
+  async type(ip: string, ops: TypeOp[]) {
+    for (const op of ops) {
+      if (op.type === 'text' || op.type === 'replace') {
+        for (const ch of op.value) await request(ip, `keypress/Lit_${encodeURIComponent(ch)}`, 'POST');
+      } else if (op.type === 'backspace') {
+        for (let i = 0; i < op.count; i++) await request(ip, 'keypress/Backspace', 'POST');
+      } else {
+        await request(ip, 'keypress/Enter', 'POST');
+      }
+    }
+  },
   async text(ip: string, text: string) {
     for (const ch of text) await request(ip, `keypress/Lit_${encodeURIComponent(ch)}`, 'POST');
   },

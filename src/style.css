@@ -81,3 +81,33 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 /* Durante a animação o topo fica acima do fundo, e o resto do app espera escondido */
 .phase-intro .topbar,.phase-morph .topbar{position:relative;z-index:45}
 .phase-intro>:not(.topbar),.phase-morph>:not(.topbar),.phase-intro .topbar .eyebrow,.phase-morph .topbar .eyebrow,.phase-intro .topbar .settings,.phase-morph .topbar .settings{opacity:0}
+
+/* Botão TOUCH na fileira de mídia */
+.media-controls .touch-button{width:auto;padding:0 12px;display:flex;align-items:center;gap:6px;background:#1d3555;color:var(--accent);border:1px solid #4ba3ffb3}
+.media-controls .touch-button span{font-size:9px;letter-spacing:1px;font-weight:800}
+
+/* Touchpad em tela cheia */
+.touchpad{position:fixed;inset:0;z-index:60;background:#07090e;display:flex;flex-direction:column;gap:12px;padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.touchpad-top{display:flex;align-items:center;justify-content:space-between}
+.touchpad-title{font-size:10px;letter-spacing:2.5px;font-weight:800;color:#8b92a1}
+.touchpad-area{flex:1;position:relative;border-radius:28px;border:1px solid #4ba3ff59;background:radial-gradient(circle at 50% 45%,#13213a,#0b0f17 70%);touch-action:none;overscroll-behavior:contain;display:grid;place-items:center;overflow:hidden}
+.touchpad-hint{display:flex;flex-direction:column;align-items:center;gap:6px;color:#5d6778;font-size:12px;text-align:center;pointer-events:none}
+.touchpad-hint span:first-child{color:#9aa6b8;font-size:15px;font-weight:600}
+.touchpad-flash{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;display:grid;place-items:center;color:var(--accent);background:#4ba3ff1f;border:1px solid #4ba3ff66;pointer-events:none}
+.touchpad-flash.ok{color:#121823;background:#fff;border-color:#fff;font-weight:800;font-size:18px}
+.touchpad-bar{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px}
+.touchpad-bar button{min-height:62px;border-radius:14px;background:#1d222e;border:1px solid #4ba3ffb3;color:#c9d0dc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.touchpad-bar button span{font-size:8px;letter-spacing:1px;font-weight:700}
+
+/* Teclado ao vivo (no topo, porque o teclado do celular ocupa a parte de baixo) */
+.type-backdrop{position:fixed;inset:0;z-index:70;background:#05070bcc;backdrop-filter:blur(6px);display:flex;justify-content:center;align-items:flex-start;padding:max(16px,env(safe-area-inset-top)) 14px 14px}
+.type-sheet{width:min(100%,480px);background:#151923;border:1px solid #303644;border-radius:22px;padding:16px;box-shadow:0 25px 80px #0009}
+.type-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.type-title{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;color:#dfe5ee}
+.type-title svg{color:var(--accent)}
+.type-input{width:100%;border-radius:14px;background:#0e1118;border:1px solid #4ba3ff99;color:#fff;padding:15px 14px;font:inherit;font-size:18px;outline:none}
+.type-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px #4ba3ff26}
+.type-actions{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:10px}
+.type-sheet .type-enter{margin-top:0;height:44px}
+.type-sheet .secondary-button{height:44px}
+.type-hint{font-size:10.5px;color:#7f8999;line-height:1.5;margin:10px 2px 0}

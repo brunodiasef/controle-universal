@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { LayoutGroup, motion, stagger, useAnimate } from 'motion/react';
-import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, Volume2, VolumeX, Plus, Minus, Mic, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, Send, LogIn, LayoutGrid, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, Volume2, VolumeX, Plus, Minus, Hand, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, LogIn, LayoutGrid, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import primeVideoLogo from './assets/prime-video.png';
 import { Intro } from './Intro';
+import { TouchPad } from './TouchPad';
+import { TypePanel } from './TypePanel';
 import { RemoteArt } from './RemoteArt';
 import { BRIDGE_STATUS_TEXT, SettingsModal } from './Settings';
 import { bridgeHealth, BridgeError } from './lib/bridge';
-import { INPUT_CHOICES, hasInputs, openApp, selectInput, sendAction, sendText, testDevice, type RemoteContext } from './lib/remote';
+import { INPUT_CHOICES, hasInputs, openApp, selectInput, sendAction, testDevice, typeOps, type RemoteContext } from './lib/remote';
 import { loadBridge, loadDevice, saveBridge } from './lib/storage';
-import { BRIDGE_ONLY, deviceLabel, errorMessage, type BridgeConfig, type BridgeStatus, type Device, type Platform, type RemoteAction, type StreamingApp } from './lib/types';
+import { BRIDGE_ONLY, TYPING_MODE, deviceLabel, errorMessage, type BridgeConfig, type BridgeStatus, type Device, type Platform, type RemoteAction, type StreamingApp } from './lib/types';
 
 type Toast = { text: string; kind: 'ok' | 'error' };
 
@@ -55,8 +58,9 @@ export default function App() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
-  const [showKeyboard, setShowKeyboard] = useState(false);
-  const [searchText, setSearchText] = useState('');
+  const [typing, setTyping] = useState(false);
+  const [showTouch, setShowTouch] = useState(false);
+  const typeInputRef = useRef<HTMLInputElement>(null);
   const [showInputs, setShowInputs] = useState(false);
   // Animação de entrada: "intro" (controle se montando) → "morph" (vai para o topo) → "done".
   const [phase, setPhase] = useState<'intro' | 'morph' | 'done'>(() =>
@@ -171,10 +175,17 @@ export default function App() {
     void run(ctx => openApp(ctx, app));
   }
 
-  async function submitText() {
-    const text = searchText.trim();
-    if (!text) return;
-    if (await run(ctx => sendText(ctx, text))) setSearchText('');
+  // Teclado ao vivo. O foco precisa acontecer no mesmo toque para o iPhone abrir o teclado: por isso flushSync.
+  function openTyping(withSearch: boolean) {
+    if (!device) { notify('Primeiro adicione sua TV em Configurações.', 'error'); setShowSettings(true); return; }
+    if (!TYPING_MODE[device.platform]) {
+      if (withSearch) press('Smart');
+      else notify('Digitar pelo app ainda não funciona neste sistema. Use as setas e o teclado na tela da TV.', 'error');
+      return;
+    }
+    if (withSearch) press('Smart');
+    flushSync(() => setTyping(true));
+    typeInputRef.current?.focus();
   }
 
   async function handleBridgeSaved(config: BridgeConfig) {
@@ -225,7 +236,7 @@ export default function App() {
     <section className="remote-card">
       <div className="remote-top"><span className="remote-mini-label"><Tv size={15} /><span>{device ? deviceLabel(device).toUpperCase() : 'SMART TV / TV BOX'}</span></span><div className="remote-top-actions">{(!device || hasInputs(device.platform)) && <button className="input-button" aria-label="Entradas" onClick={openInputs}><LogIn size={17} /><span>ENTRADAS</span></button>}<button className="power-button" aria-label="Ligar ou desligar" onClick={() => press('Power')}><Power size={21} /></button></div></div>
       <div className="quick-actions">
-        <button onClick={() => press('Smart')} className="quick-action"><SmartIcon size={20} /><span>{smartLabel}</span></button>
+        <button onClick={() => (smartLabel === 'BUSCAR' ? openTyping(true) : press('Smart'))} className="quick-action"><SmartIcon size={20} /><span>{smartLabel}</span></button>
         <button onClick={() => press('Home')} className="quick-action"><Home size={20} /><span>HOME</span></button>
         <button onClick={() => press('Back')} className="quick-action"><ArrowLeft size={20} /><span>VOLTAR</span></button>
         <button onClick={() => press('Menu')} className="quick-action"><Menu size={20} /><span>{device ? BUTTON_LABELS[device.platform].menu : 'MENU'}</span></button>
@@ -251,15 +262,9 @@ export default function App() {
         <button onClick={() => press('PlayPause')} className="play-pause" aria-label="Play ou pause"><Play size={17} fill="currentColor" /><Pause size={17} fill="currentColor" /></button>
         <button onClick={() => press('Next')} aria-label="Avançar mídia"><SkipForward /></button>
         <span className="media-divider" />
-        <button onClick={() => setShowKeyboard(!showKeyboard)} aria-label="Teclado" aria-pressed={showKeyboard}><Keyboard /></button>
-        <button onClick={() => notify('A busca por voz não funciona pela rede. Use o teclado daqui ou o microfone do controle original.', 'error')} aria-label="Pesquisa por voz"><Mic /></button>
+        <button onClick={() => openTyping(false)} aria-label="Teclado"><Keyboard /></button>
+        <button className="touch-button" onClick={() => (device ? setShowTouch(true) : openTyping(false))} aria-label="Touchpad"><Hand /><span>TOUCH</span></button>
       </div>
-      {showKeyboard && <form className="keyboard-panel" onSubmit={e => { e.preventDefault(); void submitText(); }}>
-        <Search size={17} />
-        <input value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="Abra a busca na TV e digite aqui" maxLength={200} enterKeyHint="send" />
-        <button type="submit" className="send" aria-label="Enviar texto"><Send size={16} /></button>
-        <button type="button" onClick={() => setShowKeyboard(false)} aria-label="Fechar teclado"><X size={17} /></button>
-      </form>}
     </section>
 
     <section className="help-card"><CircleHelp size={17} /><span>{helpText(device, bridgeStatus)}</span></section>
@@ -276,6 +281,18 @@ export default function App() {
         </div>
       </section>
     </div>}
+    {showTouch && device && <TouchPad
+      onAction={action => run(ctx => sendAction(ctx, action), true)}
+      onKeyboard={TYPING_MODE[device.platform] ? () => openTyping(false) : null}
+      onClose={() => setShowTouch(false)}
+    />}
+    {typing && device && TYPING_MODE[device.platform] && <TypePanel
+      mode={TYPING_MODE[device.platform]!}
+      inputRef={typeInputRef}
+      send={ops => typeOps({ device, bridge }, ops)}
+      notify={notify}
+      onClose={() => setTyping(false)}
+    />}
     {showSettings && <SettingsModal
       device={device}
       bridge={bridge}

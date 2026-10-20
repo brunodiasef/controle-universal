@@ -47,6 +47,26 @@ export type RemoteAction =
 
 export type StreamingApp = 'Netflix' | 'YouTube' | 'Prime Video';
 
+/** Digitação ao vivo: o que mudou no campo do celular, traduzido em operações para a TV. */
+export type TypeOp =
+  | { type: 'text'; value: string }
+  | { type: 'backspace'; count: number }
+  | { type: 'enter' }
+  | { type: 'replace'; value: string };
+
+/**
+ * Como cada sistema recebe a digitação: letra por letra ("incremental") ou o texto inteiro a cada
+ * mudança ("replace"). null = o app ainda não digita neste sistema.
+ */
+export const TYPING_MODE: Record<Platform, 'incremental' | 'replace' | null> = {
+  roku: 'incremental',
+  lg: 'incremental',
+  android: 'incremental',
+  samsung: 'replace',
+  googletv: null,
+  philips: null,
+};
+
 export type Device = {
   platform: Platform;
   maker?: Maker;
