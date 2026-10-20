@@ -23,7 +23,12 @@ const LEGACY_BRANDS: Record<string, Brand> = {
 
 export function loadDevice(): Device | null {
   const saved = read<{ brand?: string; ip?: string; mac?: string; adbPort?: number }>('smartRemoteDevice');
-  if (!saved?.ip || !isValidIp(saved.ip)) return null;
+  if (!saved?.ip || !isValidIp(saved.ip)) {
+    // O controle Roku anterior, publicado neste mesmo endereço, guardava só o IP em "rokuIp".
+    let rokuIp: string | null = null;
+    try { rokuIp = localStorage.getItem('rokuIp'); } catch { /* sem armazenamento */ }
+    return rokuIp && isValidIp(rokuIp) ? { brand: 'roku', ip: rokuIp } : null;
+  }
   const brand = BRANDS.includes(saved.brand as Brand) ? (saved.brand as Brand) : LEGACY_BRANDS[saved.brand ?? ''];
   if (!brand) return null;
   return { brand, ip: saved.ip, mac: saved.mac, adbPort: saved.adbPort };
