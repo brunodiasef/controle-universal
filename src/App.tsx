@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { LayoutGroup, motion, stagger, useAnimate } from 'motion/react';
-import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, Volume2, VolumeX, Plus, Minus, Hand, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, LogIn, LayoutGrid, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, VolumeX, Plus, Minus, Hand, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, LogIn, LayoutGrid, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import primeVideoLogo from './assets/prime-video.png';
 import { Intro } from './Intro';
 import { TouchPad } from './TouchPad';
@@ -242,9 +242,12 @@ export default function App() {
         <button onClick={() => press('Menu')} className="quick-action"><Menu size={20} /><span>{device ? BUTTON_LABELS[device.platform].menu : 'MENU'}</span></button>
       </div>
       <div className="control-body">
-        <div className="side-control"><span className="side-label">VOLUME</span>
-          <div className="vertical-control"><button onClick={() => press('VolumeUp')} aria-label="Aumentar volume"><Plus /></button><span className="volume-icon"><Volume2 size={15} /></span><button onClick={() => press('VolumeDown')} aria-label="Diminuir volume"><Minus /></button></div>
-          <button className="mute-button" onClick={() => press('Mute')} aria-label="Silenciar ou reativar o som"><VolumeX /></button>
+        <div className="side-control">
+          <div className="vertical-control">
+            <button onClick={() => press('VolumeUp')} aria-label="Aumentar volume"><Plus /></button>
+            <button className="pill-middle" onClick={() => press('Mute')} aria-label="Silenciar ou reativar o som"><VolumeX /></button>
+            <button onClick={() => press('VolumeDown')} aria-label="Diminuir volume"><Minus /></button>
+          </div>
         </div>
         <div className="dpad" aria-label="Controle direcional">
           <button className="dpad-up" onClick={() => press('Up')} aria-label="Cima"><ChevronUp /></button>
@@ -253,8 +256,12 @@ export default function App() {
           <button className="dpad-right" onClick={() => press('Right')} aria-label="Direita"><ChevronRight /></button>
           <button className="dpad-down" onClick={() => press('Down')} aria-label="Baixo"><ChevronDown /></button>
         </div>
-        <div className="side-control"><span className="side-label">CANAL</span>
-          <div className="channel-buttons"><button onClick={() => press('ChannelUp')} aria-label="Canal seguinte"><Plus /></button><span>CH</span><button onClick={() => press('ChannelDown')} aria-label="Canal anterior"><Minus /></button></div>
+        <div className="side-control">
+          <div className="vertical-control">
+            <button onClick={() => press('ChannelUp')} aria-label="Canal seguinte"><Plus /></button>
+            <span className="pill-label">CH</span>
+            <button onClick={() => press('ChannelDown')} aria-label="Canal anterior"><Minus /></button>
+          </div>
         </div>
       </div>
       <div className="media-controls">
