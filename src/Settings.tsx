@@ -1,12 +1,13 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, ChevronRight, KeyRound, Laptop, Link2, Radio, RefreshCw, ShieldCheck, Smartphone, Tv, X } from 'lucide-react';
 import { BridgeError, normalizeBridgeUrl } from './lib/bridge';
 import { lg } from './lib/lg';
 import { discoverDevices, finishGoogleTvPairing, pairAdb, startGoogleTvPairing, testDevice } from './lib/remote';
 import { samsung } from './lib/samsung';
+import { scanNetwork, type ScanProgress } from './lib/scan';
 import { saveDevice } from './lib/storage';
 import {
-  BRIDGE_ONLY, MAKERS, MAKER_LABEL, MAKER_PLATFORMS, PLATFORM_LABEL, defaultMaker, errorMessage, isValidIp, isValidMac,
+  BRIDGE_ONLY, MAKERS, MAKER_LABEL, MAKER_PLATFORMS, PLATFORM_LABEL, defaultMaker, errorMessage, isValidIp, isValidMac, localAccessHint,
   type BridgeConfig, type BridgeStatus, type Device, type DiscoveredDevice, type Maker, type Platform,
 } from './lib/types';
 
@@ -55,7 +56,11 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
   const [bridgeKey, setBridgeKey] = useState(bridge.key);
   const [found, setFound] = useState<DiscoveredDevice[]>([]);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<ScanProgress | null>(null);
+  const scanAbort = useRef<AbortController | null>(null);
   const bridgeOnline = bridgeStatus === 'online';
+
+  useEffect(() => () => scanAbort.current?.abort(), []);
   const platforms = MAKER_PLATFORMS[maker];
 
   function chooseMaker(next: Maker) {
@@ -156,6 +161,7 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
   }
 
   async function scan() {
+    if (!bridgeOnline) { await scanWithoutBridge(); return; }
     setBusy(true);
     setFound([]);
     try {
@@ -167,6 +173,24 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
       notify(errorMessage(error, 'Busca não concluída.'), 'error');
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Sem a ponte: bate de porta em porta nos endereços da rede (só TVs com HTTP aberto: Roku, Samsung, LG, Philips antiga).
+  async function scanWithoutBridge() {
+    const controller = new AbortController();
+    scanAbort.current = controller;
+    setFound([]);
+    setProgress({ stage: 'subnet', done: 0, total: 1 });
+    try {
+      const result = await scanNetwork([device?.ip, ip.trim(), bridge.url.replace(/^https?:\/\//, '').split(':')[0]], setProgress,
+        d => setFound(prev => [...prev, d].sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }))), controller.signal);
+      if (controller.signal.aborted) return;
+      if (result.length) notify(`Encontrei ${result.length} ${result.length === 1 ? 'TV' : 'TVs'}. Toque para escolher.`);
+      else notify(`Nenhuma TV respondeu. ${localAccessHint() ?? ''} Google TV só aparece com a ponte. Se preferir, informe o IP manualmente.`.replace(/\s+/g, ' '), 'error');
+    } finally {
+      setProgress(null);
+      scanAbort.current = null;
     }
   }
 
@@ -202,9 +226,19 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
         {tab === 'device' ? (
           <>
             <p className="modal-description">O celular (ou PC) e a TV precisam estar no mesmo Wi-Fi.</p>
-            <button className="scan-button" type="button" disabled={busy || !bridgeOnline} onClick={() => void scan()}>
-              <RefreshCw size={16} /> {busy ? 'Aguarde…' : bridgeOnline ? 'Procurar aparelhos na rede' : 'Procurar aparelhos (precisa da ponte)'}
-            </button>
+            {progress ? (
+              <div className="scan-progress" role="status">
+                <div className="scan-progress-head">
+                  <span>{progress.stage === 'subnet' ? 'Descobrindo a sua rede…' : `Procurando em ${progress.subnet}.x…`}</span>
+                  <button type="button" onClick={() => scanAbort.current?.abort()}>Cancelar</button>
+                </div>
+                <div className="scan-bar"><span style={{ width: `${progress.stage === 'subnet' ? 4 : Math.round((progress.done / progress.total) * 100)}%` }} /></div>
+              </div>
+            ) : (
+              <button className="scan-button" type="button" disabled={busy} onClick={() => void scan()}>
+                <RefreshCw size={16} /> {busy ? 'Aguarde…' : bridgeOnline ? 'Procurar aparelhos na rede' : 'Procurar TVs na rede (sem ponte)'}
+              </button>
+            )}
             {found.length > 0 && (
               <div className="found-devices">
                 {found.map(d => (

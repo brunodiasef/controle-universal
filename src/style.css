@@ -111,3 +111,10 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .type-sheet .type-enter{margin-top:0;height:44px}
 .type-sheet .secondary-button{height:44px}
 .type-hint{font-size:10.5px;color:#7f8999;line-height:1.5;margin:10px 2px 0}
+
+/* Busca sem ponte: progresso */
+.scan-progress{border:1px solid #2a4670;background:#162a46;border-radius:11px;padding:11px 12px;margin:0 0 13px}
+.scan-progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;color:var(--accent);margin-bottom:9px}
+.scan-progress-head button{background:transparent;color:#c6cbd5;font-size:11px;font-weight:600;padding:2px 4px}
+.scan-bar{height:5px;border-radius:5px;background:#0e1118;overflow:hidden}
+.scan-bar span{display:block;height:100%;border-radius:5px;background:var(--accent);transition:width .25s ease-out}

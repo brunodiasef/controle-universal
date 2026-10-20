@@ -104,6 +104,27 @@ export function isValidIp(ip: string): boolean {
   return /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(ip);
 }
 
+export function isIOS(): boolean {
+  return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isPrivateHost(host: string): boolean {
+  return host === 'localhost' || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+}
+
+/**
+ * Os navegadores têm regras opostas para falar com aparelhos da casa: o Safari (iPhone) só deixa a
+ * partir de http://, e o Chrome (Android/PC) só a partir de https:// (com permissão). Devolve a dica
+ * do endereço certo quando o app está aberto pelo endereço "errado" para este aparelho.
+ */
+export function localAccessHint(): string | null {
+  if (isPrivateHost(location.hostname)) return null; // aberto pela ponte, no próprio Wi-Fi
+  const https = location.protocol === 'https:';
+  if (isIOS() && https) return `No iPhone, abra o app por http://${location.host} (com "http", sem o "s").`;
+  if (!isIOS() && !https) return `Neste celular, abra o app por https://${location.host} (com "https") e permita "Acesso à rede local".`;
+  return https ? 'Se o navegador perguntar, permita "Acesso à rede local".' : null;
+}
+
 export function isValidMac(mac: string): boolean {
   return /^[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}$/i.test(mac);
 }

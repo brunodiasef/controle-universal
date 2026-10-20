@@ -35,6 +35,8 @@ Quando o caminho direto falha e a ponte está configurada, o app passa pela pont
 
 ## Busca de aparelhos
 
+**Sem a ponte**, o botão "Procurar TVs na rede (sem ponte)" bate de porta em porta nos endereços da rede (portas 8060 Roku, 8001 Samsung, 3000 LG, 1925 Philips antiga) e mostra a marca provável em ~15 s. Não encontra Google TV e não lê nome/modelo. No iPhone, funciona aberto por http://; no Android/PC, por https:// com a permissão "Acesso à rede local".
+
 Com a ponte ativa, o botão "Procurar aparelhos na rede" encontra os aparelhos que respondem a SSDP/UPnP e ao mDNS do Google TV. Para cada um, mostra o nome, o fabricante, o modelo e o sistema detectado. Aparelhos que o app ainda não controla (roteadores, impressoras, outras marcas) aparecem apagados. Tocar num aparelho da lista preenche marca, sistema e IP.
 
 ## Publicar no GitHub
