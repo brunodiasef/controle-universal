@@ -263,7 +263,7 @@ export default function App() {
     </section>
 
     <section className="help-card"><CircleHelp size={17} /><span>{helpText(device, bridgeStatus)}</span></section>
-    <footer><span>SMART REMOTE <b>•</b> v{__APP_VERSION__}</span><span className="footer-status"><span /> {bridgeStatus === 'online' ? 'Ponte ativa' : location.protocol === 'https:' ? 'App web' : 'Rede local'}</span></footer>
+    <footer><span>BRUNOVERSAL <b>•</b> v{__APP_VERSION__}</span><span className="footer-status"><span /> {bridgeStatus === 'online' ? 'Ponte ativa' : location.protocol === 'https:' ? 'App web' : 'Rede local'}</span></footer>
 
     {toast && <div className={`toast ${toast.kind}`} role="status"><span className="toast-check">{toast.kind === 'ok' ? <Check size={15} /> : <TriangleAlert size={14} />}</span>{toast.text}</div>}
     {showInputs && device && INPUT_CHOICES[device.platform] && <div className="modal-backdrop" onClick={() => setShowInputs(false)}>
