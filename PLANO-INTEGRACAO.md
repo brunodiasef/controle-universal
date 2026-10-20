@@ -1,31 +1,42 @@
-# Integrações Smart Remote — estado da versão 1.2
+# Integrações Smart Remote — estado da versão 1.3
 
 ## Implementado
-- App web (PWA) com caminhos relativos, publicado pelo GitHub Pages via GitHub Actions e também servido pela ponte.
-- **Roku**: ECP direto do navegador (`fetch` no-cors para a porta 8060) e reserva pela ponte. Teclas, apps (Netflix 12, YouTube 837, Prime 13) e digitação (`Lit_`).
-- **Samsung**: WebSocket direto do navegador.
-  - Em página HTTPS, `wss://` na porta 8002, depois de aceitar o certificado da TV.
-  - Em página HTTP (ponte), `ws://` na porta 8001 primeiro.
-  - O token da TV é salvo, para não pedir permissão de novo.
-  - Abre apps por `ed.apps.launch`, digita texto (`SendInputString`) e liga a TV por Wake-on-LAN através da ponte.
-- **Elsys / Android TV**: ADB pela ponte. Usa a porta 5555 ou uma porta configurável, faz o pareamento do Android 11+ (`adb pair`), envia teclas, abre apps e digita texto (com filtro de caracteres).
-- **Ponte**:
-  - só aceita a rede local e exige o código de pareamento, bloqueando após 5 erros;
-  - só aceita teclas e apps de uma lista fixa e só envia para IPs locais;
-  - faz busca SSDP e Wake-on-LAN, e serve a interface compilada.
-- **Interface**: sem valores falsos de volume ou canal. O estado "conectado" é testado de verdade ao abrir o app, e o aparelho salvo na v1.1 é migrado.
+- **Samsung (Tizen)**:
+  - WebSocket direto do navegador: `wss://` na porta 8002 com certificado aceito, ou `ws://` na 8001 quando o app é aberto pela ponte;
+  - o token da TV é salvo;
+  - abre apps (`ed.apps.launch`), digita texto e liga a TV por Wake-on-LAN através da ponte.
+- **LG (webOS)**:
+  - protocolo SSAP direto do navegador (`wss://` na 3001 ou `ws://` na 3000) e pela ponte;
+  - o pareamento aparece na tela da TV, e a chave da TV é salva;
+  - se a TV recusar a assinatura antiga ("blacklisted certificate"), o app registra sem assinatura;
+  - botões pelo canal de botões ("pointer socket"), apps, texto e desligar;
+  - liga a TV por Wake-on-LAN através da ponte.
+- **Roku TV** (Roku, AOC, Philips, TCL): ECP direto do navegador e reserva pela ponte.
+- **Google TV / Android TV** (TCL, AOC, Philips, Sony, Xiaomi...): protocolo oficial do controle do Google, só pela ponte.
+  - O certificado deste PC é gerado na primeira vez.
+  - O pareamento usa o código hexadecimal de 6 caracteres mostrado na TV, conferido localmente antes do envio, na porta 6467.
+  - Os comandos usam a porta 6466, com resposta ao "ping" da TV.
+  - Envia teclas e abre apps por link.
+- **Philips sem Android**: JointSPACE (porta 1925) pela ponte. Detecta Philips com Android e orienta a escolher Google TV.
+- **Elsys / Android por ADB**: inalterado.
+- **Busca**:
+  - usa SSDP/UPnP com a ficha de cada aparelho (fabricante, modelo, nome) e o mDNS do Google TV (`_androidtvremote2._tcp`);
+  - identifica marca e sistema e preenche o formulário ao tocar.
+- **Interface**: escolha de Marca e depois Sistema da TV, com dica para descobrir o sistema; campo de código do Google TV; os rótulos dos botões mudam conforme o sistema.
+
+## Testes feitos
+- Os simuladores de Samsung, LG, Roku, Google TV e Philips seguem os protocolos oficiais.
+- Passaram nos simuladores, tanto pela ponte quanto direto do navegador:
+  - LG: conexão, plano B sem assinatura, pedido na tela, botões, play/pausa, app, texto e desligar;
+  - Google TV: recusa sem pareamento, código errado barrado, pareamento, ping, teclas e app;
+  - Philips: teclas e detecção de modelo com Android.
+- Busca: leitura da ficha UPnP, de pacotes mDNS e identificação de 7 casos (TCL Google TV, AOC Roku, Philips Saphi e Google, LG, Samsung e roteador).
 
 ## Limites conhecidos
-- O código não foi testado com as TVs reais do usuário. Cada modelo pode se comportar diferente.
-- O **Safari / iPhone** bloqueia o acesso de sites HTTPS à rede local. No iPhone, use o app aberto pela ponte (http).
-- No **Chrome**, o acesso à rede local depende de o usuário aceitar a permissão "Acesso à rede local".
-- **Samsung antiga** (só porta 8001) não funciona direto do GitHub Pages, porque o navegador proíbe `ws://` em página HTTPS. Use a ponte.
-- Os IDs dos apps da Samsung variam por ano; para a Netflix, o app tenta dois IDs.
-- O texto na Samsung só aparece se o teclado da TV estiver aberto.
-- **LG webOS** e outras marcas ainda não têm adaptador.
+- Nada foi testado com TVs reais destas marcas. Firmwares podem variar.
+- Google TV: digitar texto pelo app ainda não está implementado.
+- Philips sem Android: abrir apps não é suportado. Alguns modelos 2016+ podem exigir pareamento.
+- **Safari / iPhone** bloqueia o acesso de sites HTTPS à rede local. No iPhone, use o app aberto pela ponte (http).
+- **Chrome**: o acesso à rede local depende da permissão "Acesso à rede local".
+- **Samsung e LG antigas** (só portas 8001/3000) não funcionam direto do GitHub Pages, porque o navegador proíbe `ws://` em página HTTPS. Use a ponte.
 - Busca por voz não é possível pela rede.
-
-## Próxima validação prática
-1. Roku: abrir pelo GitHub Pages no Chrome, permitir a rede local e testar os botões.
-2. Samsung: "Autorizar certificado da TV", conectar, aceitar na TV e testar. Se falhar, testar pela ponte.
-3. Elsys: ativar a depuração ADB, abrir a ponte com o platform-tools e conectar.

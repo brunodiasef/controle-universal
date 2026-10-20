@@ -1,17 +1,27 @@
-// Decide por onde cada comando vai: direto do navegador (Roku, Samsung) ou pela ponte no PC.
-// Se o caminho direto falhar e a ponte estiver configurada, tenta a ponte automaticamente.
+// Decide por onde cada comando vai: direto do navegador (Samsung, LG, Roku) ou pela ponte no PC
+// (Google TV/Android TV, Philips sem Android, TV Box por ADB). Se o caminho direto falhar
+// e a ponte estiver configurada, tenta a ponte automaticamente.
 import { bridgeRequest, isBridgeReady } from './bridge';
+import { lg } from './lg';
 import { roku } from './roku';
 import { samsung } from './samsung';
-import { errorMessage, type BridgeConfig, type Device, type RemoteAction, type StreamingApp } from './types';
+import { errorMessage, type BridgeConfig, type DiscoveredDevice, type Device, type Platform, type RemoteAction, type StreamingApp } from './types';
 
 export type RemoteContext = { device: Device; bridge: BridgeConfig };
+
+const NEEDS_BRIDGE: Partial<Record<Platform, string>> = {
+  googletv: 'TVs com Google TV/Android TV (TCL, AOC, Philips...) precisam da ponte no PC. Abra o iniciar-windows.bat e informe o endereço e o código em Configurações › Ponte no PC.',
+  philips: 'Esta Philips precisa da ponte no PC. Abra o iniciar-windows.bat e informe o endereço e o código em Configurações › Ponte no PC.',
+  android: 'A TV Box por ADB precisa da ponte no PC. Abra o iniciar-windows.bat e informe o endereço e o código em Configurações › Ponte no PC.',
+};
+
+const NO_TEXT: Platform[] = ['googletv', 'philips'];
 
 // Aparelhos em que o caminho direto já falhou nesta sessão: vão primeiro pela ponte.
 const preferBridge = new Set<string>();
 
 function deviceBody(device: Device) {
-  return { brand: device.brand, ip: device.ip, adbPort: device.adbPort ?? 5555 };
+  return { platform: device.platform, ip: device.ip, adbPort: device.adbPort ?? 5555 };
 }
 
 async function viaBridge(ctx: RemoteContext, path: string, extra: Record<string, unknown> = {}): Promise<string> {
@@ -19,20 +29,18 @@ async function viaBridge(ctx: RemoteContext, path: string, extra: Record<string,
   return result.message;
 }
 
-async function route(
-  ctx: RemoteContext,
-  direct: (() => Promise<string>) | null,
-  bridgePath: string,
-  extra?: Record<string, unknown>,
-): Promise<string> {
+// Samsung, LG e Roku falam direto com o navegador; os demais só pela ponte.
+function directDriver(platform: Platform) {
+  return platform === 'samsung' ? samsung : platform === 'lg' ? lg : platform === 'roku' ? roku : null;
+}
+
+async function route(ctx: RemoteContext, direct: (() => Promise<string>) | null, bridgePath: string, extra?: Record<string, unknown>): Promise<string> {
   const bridge = () => viaBridge(ctx, bridgePath, extra);
   if (!direct) {
-    if (!isBridgeReady(ctx.bridge)) {
-      throw new Error('A TV Box (ADB) só funciona com a ponte no PC. Abra Configurações › Ponte no PC e informe o endereço e o código de pareamento.');
-    }
+    if (!isBridgeReady(ctx.bridge)) throw new Error(NEEDS_BRIDGE[ctx.device.platform] ?? 'Este aparelho precisa da ponte no PC.');
     return bridge();
   }
-  const key = `${ctx.device.brand}:${ctx.device.ip}`;
+  const key = `${ctx.device.platform}:${ctx.device.ip}`;
   const useBridge = isBridgeReady(ctx.bridge);
   const order = useBridge && preferBridge.has(key) ? [bridge, direct] : useBridge ? [direct, bridge] : [direct];
   const errors: string[] = [];
@@ -48,29 +56,29 @@ async function route(
   throw new Error(errors.length > 1 ? `${errors[0]} Pela ponte também falhou: ${errors[1]}` : errors[0]);
 }
 
-// Roku e Samsung falam direto com o navegador; a TV Box (ADB) só pela ponte.
-function direct(ctx: RemoteContext) {
-  const { brand } = ctx.device;
-  return brand === 'roku' ? roku : brand === 'samsung' ? samsung : null;
-}
+const CONNECTED: Record<Platform, string> = {
+  samsung: 'Samsung conectada.',
+  lg: 'LG conectada.',
+  roku: 'Roku encontrado. Teste um botão e confira a TV.',
+  googletv: 'TV conectada.',
+  philips: 'Philips encontrada.',
+  android: 'TV Box conectada.',
+};
 
 export async function testDevice(ctx: RemoteContext): Promise<string> {
-  const driver = direct(ctx);
-  const { ip, brand } = ctx.device;
-  return route(ctx, driver && (async () => {
-    await driver.test(ip);
-    return brand === 'roku' ? 'Roku encontrado. Teste um botão e confira a TV.' : 'Samsung conectada.';
-  }), '/connect');
+  const { ip, platform } = ctx.device;
+  const driver = directDriver(platform);
+  return route(ctx, driver && (async () => { await driver.test(ip); return CONNECTED[platform]; }), '/connect');
 }
 
 export async function sendAction(ctx: RemoteContext, action: RemoteAction): Promise<string> {
-  const driver = direct(ctx);
-  const { ip, mac, brand } = ctx.device;
+  const { ip, mac, platform } = ctx.device;
+  const driver = directDriver(platform);
   try {
     return await route(ctx, driver && (async () => { await driver.key(ip, action); return 'Comando enviado.'; }), '/command', { action });
   } catch (error) {
-    // TV Samsung desligada não responde pela rede: com o MAC salvo, a ponte manda o sinal para ligar.
-    if (action === 'Power' && brand === 'samsung' && mac && isBridgeReady(ctx.bridge)) {
+    // TV desligada não responde pela rede: com o MAC salvo, a ponte manda o sinal para ligar.
+    if (action === 'Power' && (platform === 'samsung' || platform === 'lg') && mac && isBridgeReady(ctx.bridge)) {
       const result = await bridgeRequest<{ message: string }>(ctx.bridge, '/wake', { mac });
       return `${result.message} Aguarde alguns segundos.`;
     }
@@ -79,17 +87,19 @@ export async function sendAction(ctx: RemoteContext, action: RemoteAction): Prom
 }
 
 export async function openApp(ctx: RemoteContext, app: StreamingApp): Promise<string> {
-  const driver = direct(ctx);
-  const { ip } = ctx.device;
+  const { ip, platform } = ctx.device;
+  if (platform === 'philips') throw new Error('Abrir aplicativos não é possível nesta Philips. Use o botão Home e escolha o app na TV.');
+  const driver = directDriver(platform);
   return route(ctx, driver && (async () => { await driver.launch(ip, app); return `Pedido para abrir ${app} enviado.`; }), '/app', { app });
 }
 
 export async function sendText(ctx: RemoteContext, text: string): Promise<string> {
-  const driver = direct(ctx);
-  const { ip, brand } = ctx.device;
+  const { ip, platform } = ctx.device;
+  if (NO_TEXT.includes(platform)) throw new Error('Digitar pelo app ainda não funciona neste sistema. Use as setas e o teclado na tela da TV.');
+  const driver = directDriver(platform);
   return route(ctx, driver && (async () => {
     await driver.text(ip, text);
-    return brand === 'samsung' ? 'Texto enviado. Ele aparece se o teclado da TV estiver aberto.' : 'Texto enviado.';
+    return platform === 'roku' ? 'Texto enviado.' : 'Texto enviado. Ele aparece se o teclado da TV estiver aberto.';
   }), '/text', { text });
 }
 
@@ -97,6 +107,14 @@ export function pairAdb(bridge: BridgeConfig, ip: string, port: number, code: st
   return bridgeRequest<{ message: string }>(bridge, '/adb-pair', { ip, port, code });
 }
 
+export function startGoogleTvPairing(bridge: BridgeConfig, ip: string) {
+  return bridgeRequest<{ message: string }>(bridge, '/googletv/pair/start', { ip });
+}
+
+export function finishGoogleTvPairing(bridge: BridgeConfig, ip: string, code: string) {
+  return bridgeRequest<{ message: string }>(bridge, '/googletv/pair/finish', { ip, code }, 30_000);
+}
+
 export function discoverDevices(bridge: BridgeConfig) {
-  return bridgeRequest<{ devices: Array<{ ip: string; name: string; brand?: string }> }>(bridge, '/discover');
+  return bridgeRequest<{ devices: DiscoveredDevice[] }>(bridge, '/discover', undefined, 30_000);
 }

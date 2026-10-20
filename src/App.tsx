@@ -4,28 +4,36 @@ import { BRIDGE_STATUS_TEXT, SettingsModal } from './Settings';
 import { bridgeHealth, BridgeError } from './lib/bridge';
 import { openApp, sendAction, sendText, testDevice, type RemoteContext } from './lib/remote';
 import { loadBridge, loadDevice, saveBridge } from './lib/storage';
-import { BRAND_LABEL, errorMessage, type BridgeConfig, type BridgeStatus, type Device, type RemoteAction, type StreamingApp } from './lib/types';
+import { BRIDGE_ONLY, deviceLabel, errorMessage, type BridgeConfig, type BridgeStatus, type Device, type Platform, type RemoteAction, type StreamingApp } from './lib/types';
 
 type Toast = { text: string; kind: 'ok' | 'error' };
 
-const SMART_LABEL: Record<Device['brand'], string> = { samsung: 'SMART', roku: 'BUSCAR', android: 'BUSCAR' };
+// Rótulos dos botões "Smart" e "Menu" conforme o que cada sistema faz com eles.
+const BUTTON_LABELS: Record<Platform, { smart: string; menu: string }> = {
+  samsung: { smart: 'SMART', menu: 'MENU' },
+  lg: { smart: 'AJUSTES', menu: 'MENU' },
+  roku: { smart: 'BUSCAR', menu: 'OPÇÕES' },
+  googletv: { smart: 'BUSCAR', menu: 'AJUSTES' },
+  philips: { smart: 'BUSCAR', menu: 'OPÇÕES' },
+  android: { smart: 'BUSCAR', menu: 'MENU' },
+};
 
 function helpText(device: Device | null, bridgeStatus: BridgeStatus): string {
-  if (!device) return 'Toque em Conectar, escolha Samsung, Roku ou TV Box Elsys e informe o IP da TV.';
+  if (!device) return 'Toque em Conectar, escolha a marca da TV (Samsung, LG, TCL, AOC, Philips, Roku ou Elsys) e informe o IP.';
   const https = location.protocol === 'https:';
-  if (device.brand === 'roku') {
+  if (BRIDGE_ONLY.includes(device.platform)) {
+    return bridgeStatus === 'online'
+      ? 'Esta TV recebe os comandos pela ponte no PC, que está ativa.'
+      : 'Esta TV precisa da ponte no PC: abra o iniciar-windows.bat e informe o endereço e o código em Configurações › Ponte no PC.';
+  }
+  if (device.platform === 'roku') {
     return https
       ? 'O Roku recebe os comandos direto deste navegador (Chrome no PC ou Android). Se o Chrome perguntar, permita "Acesso à rede local".'
       : 'O Roku recebe os comandos direto deste navegador.';
   }
-  if (device.brand === 'samsung') {
-    return https
-      ? 'Samsung pelo site do GitHub: toque uma vez em Configurações › "Autorizar certificado da TV" e aceite o aviso. Se não der, a ponte no PC assume.'
-      : 'Na primeira vez a Samsung pede permissão na tela: aceite com o controle original.';
-  }
-  return bridgeStatus === 'online'
-    ? 'A TV Box recebe os comandos pela ponte no PC, que está ativa.'
-    : 'A TV Box Elsys/Android precisa da ponte no PC: abra o iniciar-windows.bat e informe o endereço e o código em Configurações › Ponte no PC.';
+  return https
+    ? 'Pelo site do GitHub: toque uma vez em Configurações › "Autorizar certificado da TV" e aceite o aviso. Se não der, a ponte no PC assume.'
+    : 'Na primeira vez a TV pede permissão na tela: aceite com o controle original.';
 }
 
 export default function App() {
@@ -137,7 +145,7 @@ export default function App() {
 
   const bridgeClass = bridgeStatus === 'online' ? 'online' : bridgeStatus === 'checking' ? 'checking' : bridgeStatus === 'off' ? 'idle' : '';
   const bridgeLine = bridgeStatus === 'off'
-    ? (device?.brand === 'android' ? '● Ponte no PC: necessária para a TV Box' : '● Ponte no PC: opcional, não configurada')
+    ? (device && BRIDGE_ONLY.includes(device.platform) ? '● Ponte no PC: necessária para esta TV' : '● Ponte no PC: opcional, não configurada')
     : `● ${BRIDGE_STATUS_TEXT[bridgeStatus]}`;
   const pill = busy ? 'ENVIANDO' : sent ? 'ENVIADO' : connected ? 'CONECTADO' : device ? 'PRONTO' : 'SEM TV';
 
@@ -151,7 +159,7 @@ export default function App() {
       <div className="connection-mark">{connected ? <Wifi size={21} /> : <WifiOff size={21} />}</div>
       <div className="connection-copy">
         <strong>{connected ? 'Equipamento conectado' : device ? 'Equipamento salvo, sem resposta ainda' : 'Configure seu dispositivo'}</strong>
-        <span>{device ? `${BRAND_LABEL[device.brand]} • ${device.ip}` : 'Samsung, Roku ou TV Box Elsys'}</span>
+        <span>{device ? `${deviceLabel(device)} • ${device.ip}` : 'Samsung, LG, TCL, AOC, Philips, Roku ou Elsys'}</span>
         <small className={`bridge-indicator ${bridgeClass}`}>{bridgeLine}</small>
       </div>
       <button className="connect-button" onClick={() => setShowSettings(true)}>{device ? 'Gerenciar' : 'Conectar'} <span>＋</span></button>
@@ -166,12 +174,12 @@ export default function App() {
 
     <section className="section-heading remote-heading"><div><p className="eyebrow">CONTROLE PRINCIPAL</p><h2>Seu controle remoto</h2></div><span className={`live-pill ${sent ? 'sent' : ''}`}><span /> {pill}</span></section>
     <section className="remote-card">
-      <div className="remote-top"><span className="remote-mini-label"><Tv size={15} /> {device ? BRAND_LABEL[device.brand].toUpperCase() : 'SMART TV / TV BOX'}</span><button className="power-button" aria-label="Ligar ou desligar" onClick={() => press('Power')}><Power size={21} /></button></div>
+      <div className="remote-top"><span className="remote-mini-label"><Tv size={15} /> {device ? deviceLabel(device).toUpperCase() : 'SMART TV / TV BOX'}</span><button className="power-button" aria-label="Ligar ou desligar" onClick={() => press('Power')}><Power size={21} /></button></div>
       <div className="quick-actions">
-        <button onClick={() => press('Smart')} className="quick-action smart-action"><span className="smart-glyph"><span /><span /><span /><span /></span><span>{device ? SMART_LABEL[device.brand] : 'SMART'}</span></button>
+        <button onClick={() => press('Smart')} className="quick-action smart-action"><span className="smart-glyph"><span /><span /><span /><span /></span><span>{device ? BUTTON_LABELS[device.platform].smart : 'SMART'}</span></button>
         <button onClick={() => press('Home')} className="quick-action"><Home size={20} /><span>HOME</span></button>
         <button onClick={() => press('Back')} className="quick-action"><ArrowLeft size={20} /><span>VOLTAR</span></button>
-        <button onClick={() => press('Menu')} className="quick-action"><Menu size={20} /><span>{device?.brand === 'roku' ? 'OPÇÕES' : 'MENU'}</span></button>
+        <button onClick={() => press('Menu')} className="quick-action"><Menu size={20} /><span>{device ? BUTTON_LABELS[device.platform].menu : 'MENU'}</span></button>
       </div>
       <div className="control-body">
         <div className="dpad" aria-label="Controle direcional">

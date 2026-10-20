@@ -1,4 +1,4 @@
-import { BRANDS, isValidIp, type BridgeConfig, type Brand, type Device } from './types';
+import { MAKERS, isValidIp, type BridgeConfig, type Device, type Maker, type Platform } from './types';
 
 function read<T>(key: string): T | null {
   try {
@@ -13,8 +13,18 @@ function write(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* modo privado: segue sem salvar */ }
 }
 
-// Nomes usados pela versão 1.1, para não perder o aparelho já salvo.
-const LEGACY_BRANDS: Record<string, Brand> = {
+function readText(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+function writeText(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch { /* sem armazenamento */ }
+}
+
+const PLATFORMS: Platform[] = ['samsung', 'lg', 'roku', 'googletv', 'philips', 'android'];
+
+// Nomes usados pelas versões 1.1 e 1.2.0, para não perder o aparelho já salvo.
+const LEGACY: Record<string, Platform> = {
   'Samsung Smart TV': 'samsung',
   'Elsys TV Box': 'android',
   'Android TV / Google TV': 'android',
@@ -22,16 +32,17 @@ const LEGACY_BRANDS: Record<string, Brand> = {
 };
 
 export function loadDevice(): Device | null {
-  const saved = read<{ brand?: string; ip?: string; mac?: string; adbPort?: number }>('smartRemoteDevice');
+  const saved = read<{ platform?: string; brand?: string; maker?: string; ip?: string; mac?: string; adbPort?: number }>('smartRemoteDevice');
   if (!saved?.ip || !isValidIp(saved.ip)) {
     // O controle Roku anterior, publicado neste mesmo endereço, guardava só o IP em "rokuIp".
-    let rokuIp: string | null = null;
-    try { rokuIp = localStorage.getItem('rokuIp'); } catch { /* sem armazenamento */ }
-    return rokuIp && isValidIp(rokuIp) ? { brand: 'roku', ip: rokuIp } : null;
+    const rokuIp = readText('rokuIp');
+    return rokuIp && isValidIp(rokuIp) ? { platform: 'roku', maker: 'roku', ip: rokuIp } : null;
   }
-  const brand = BRANDS.includes(saved.brand as Brand) ? (saved.brand as Brand) : LEGACY_BRANDS[saved.brand ?? ''];
-  if (!brand) return null;
-  return { brand, ip: saved.ip, mac: saved.mac, adbPort: saved.adbPort };
+  const raw = saved.platform ?? saved.brand ?? '';
+  const platform = PLATFORMS.includes(raw as Platform) ? (raw as Platform) : LEGACY[raw];
+  if (!platform) return null;
+  const maker = MAKERS.includes(saved.maker as Maker) ? (saved.maker as Maker) : undefined;
+  return { platform, maker, ip: saved.ip, mac: saved.mac, adbPort: saved.adbPort };
 }
 
 export function saveDevice(device: Device) {
@@ -51,10 +62,7 @@ export function saveBridge(config: BridgeConfig) {
   write('smartRemoteBridge', config);
 }
 
-export function loadSamsungToken(ip: string): string | null {
-  try { return localStorage.getItem(`samsungToken:${ip}`); } catch { return null; }
-}
-
-export function saveSamsungToken(ip: string, token: string) {
-  try { localStorage.setItem(`samsungToken:${ip}`, token); } catch { /* sem armazenamento */ }
-}
+export const loadSamsungToken = (ip: string) => readText(`samsungToken:${ip}`);
+export const saveSamsungToken = (ip: string, token: string) => writeText(`samsungToken:${ip}`, token);
+export const loadLgKey = (ip: string) => readText(`lgClientKey:${ip}`);
+export const saveLgKey = (ip: string, key: string) => writeText(`lgClientKey:${ip}`, key);

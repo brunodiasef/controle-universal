@@ -3,9 +3,12 @@ import { withTimeout, type BridgeConfig } from './types';
 
 export class BridgeError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Google TV ainda não pareado: o app deve pedir o código mostrado na TV. */
+  needsPairing: boolean;
+  constructor(status: number, message: string, needsPairing = false) {
     super(message);
     this.status = status;
+    this.needsPairing = needsPairing;
   }
 }
 
@@ -44,8 +47,8 @@ export async function bridgeRequest<T>(config: BridgeConfig, path: string, body?
   } finally {
     timer.done();
   }
-  const data = await response.json().catch(() => ({})) as { error?: string };
-  if (!response.ok) throw new BridgeError(response.status, data.error || `A ponte respondeu com erro ${response.status}.`);
+  const data = await response.json().catch(() => ({})) as { error?: string; needsPairing?: boolean };
+  if (!response.ok) throw new BridgeError(response.status, data.error || `A ponte respondeu com erro ${response.status}.`, Boolean(data.needsPairing));
   return data as T;
 }
 

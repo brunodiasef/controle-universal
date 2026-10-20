@@ -1,10 +1,14 @@
 import { useState, type FormEvent } from 'react';
-import { ChevronRight, KeyRound, Laptop, Link2, Radio, RefreshCw, ShieldCheck, Smartphone, Tv, X } from 'lucide-react';
-import { normalizeBridgeUrl } from './lib/bridge';
-import { discoverDevices, pairAdb, testDevice } from './lib/remote';
+import { Check, ChevronRight, KeyRound, Laptop, Link2, Radio, RefreshCw, ShieldCheck, Smartphone, Tv, X } from 'lucide-react';
+import { BridgeError, normalizeBridgeUrl } from './lib/bridge';
+import { lg } from './lib/lg';
+import { discoverDevices, finishGoogleTvPairing, pairAdb, startGoogleTvPairing, testDevice } from './lib/remote';
 import { samsung } from './lib/samsung';
 import { saveDevice } from './lib/storage';
-import { BRANDS, BRAND_LABEL, errorMessage, isValidIp, isValidMac, type Brand, type BridgeConfig, type BridgeStatus, type Device } from './lib/types';
+import {
+  BRIDGE_ONLY, MAKERS, MAKER_LABEL, MAKER_PLATFORMS, PLATFORM_LABEL, defaultMaker, errorMessage, isValidIp, isValidMac,
+  type BridgeConfig, type BridgeStatus, type Device, type DiscoveredDevice, type Maker, type Platform,
+} from './lib/types';
 
 type Props = {
   device: Device | null;
@@ -16,11 +20,16 @@ type Props = {
   notify: (text: string, kind?: 'ok' | 'error') => void;
 };
 
-const BRAND_HINT: Record<Brand, string> = {
+const PLATFORM_HINT: Record<Platform, string> = {
   samsung: 'Na primeira conexão a TV mostra um pedido de permissão: aceite com o controle original. Pelo site do GitHub, toque antes em "Autorizar certificado da TV" e aceite o aviso do navegador.',
+  lg: 'Na primeira conexão a LG mostra um pedido de permissão: aceite com o controle original. Pelo site do GitHub, toque antes em "Autorizar certificado da TV" e aceite o aviso. Na TV, deixe ativado "LG Connect Apps" (Configurações › Geral › Dispositivos).',
   roku: 'No Roku: Configurações › Sistema › Configurações avançadas do sistema › Controle por aplicativos móveis › Acesso à rede: Padrão. No Chrome, permita "Acesso à rede local" quando ele perguntar.',
+  googletv: 'Precisa da ponte no PC. Na primeira conexão a TV mostra um código de 6 caracteres: digite aqui para parear. Funciona com TCL, AOC, Philips, Sony, Xiaomi e outras com Google TV/Android TV.',
+  philips: 'Para Philips sem Android (sistema próprio da Philips). Precisa da ponte no PC. Se a sua Philips tiver Google TV/Android TV, escolha esse sistema.',
   android: 'Na TV Box: ative as Opções do desenvolvedor e a Depuração ADB (ou Depuração sem fio). Precisa da ponte no PC. Na primeira vez a TV Box pede para autorizar o computador.',
 };
+
+const SYSTEM_HELP = 'Não sabe o sistema? Veja na tela inicial da TV: se aparecer "Google TV" ou a Play Store, é Google TV/Android TV; se aparecer o logo Roku, é Roku TV.';
 
 export const BRIDGE_STATUS_TEXT: Record<BridgeStatus, string> = {
   off: 'Ponte não configurada.',
@@ -33,34 +42,57 @@ export const BRIDGE_STATUS_TEXT: Record<BridgeStatus, string> = {
 
 export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceSaved, onBridgeSaved, notify }: Props) {
   const [tab, setTab] = useState<'device' | 'bridge'>('device');
-  const [brand, setBrand] = useState<Brand>(device?.brand ?? 'samsung');
+  const [maker, setMaker] = useState<Maker>(device ? device.maker ?? defaultMaker(device.platform) : 'samsung');
+  const [platform, setPlatform] = useState<Platform>(device?.platform ?? 'samsung');
   const [ip, setIp] = useState(device?.ip ?? '');
   const [mac, setMac] = useState(device?.mac ?? '');
   const [adbPort, setAdbPort] = useState(String(device?.adbPort ?? 5555));
   const [pairPort, setPairPort] = useState('');
   const [pairCode, setPairCode] = useState('');
+  const [tvCode, setTvCode] = useState('');
+  const [awaitingTvCode, setAwaitingTvCode] = useState(false);
   const [bridgeUrl, setBridgeUrl] = useState(bridge.url.replace(/^http:\/\//, ''));
   const [bridgeKey, setBridgeKey] = useState(bridge.key);
-  const [found, setFound] = useState<Array<{ ip: string; name: string; brand?: string }>>([]);
+  const [found, setFound] = useState<DiscoveredDevice[]>([]);
   const [busy, setBusy] = useState(false);
   const bridgeOnline = bridgeStatus === 'online';
+  const platforms = MAKER_PLATFORMS[maker];
 
-  async function saveDeviceForm(e: FormEvent) {
-    e.preventDefault();
+  function chooseMaker(next: Maker) {
+    setMaker(next);
+    if (!MAKER_PLATFORMS[next].includes(platform)) setPlatform(MAKER_PLATFORMS[next][0]);
+    setAwaitingTvCode(false);
+  }
+
+  function chooseFound(d: DiscoveredDevice) {
+    setIp(d.ip);
+    setAwaitingTvCode(false);
+    if (d.platform) {
+      const nextMaker = d.maker && MAKER_PLATFORMS[d.maker].includes(d.platform) ? d.maker : defaultMaker(d.platform);
+      setMaker(MAKER_PLATFORMS[nextMaker].includes(d.platform) ? nextMaker : 'outra');
+      setPlatform(d.platform);
+    } else if (d.maker) {
+      chooseMaker(d.maker);
+    }
+  }
+
+  function buildDevice(): Device | null {
     const cleanIp = ip.trim();
     const cleanMac = mac.trim();
     const port = Number(adbPort || 5555);
-    if (!isValidIp(cleanIp)) return notify('Informe um IP válido, por exemplo 192.168.1.100.', 'error');
-    if (brand === 'samsung' && cleanMac && !isValidMac(cleanMac)) return notify('MAC inválido. Exemplo: 64:1C:AE:12:34:56', 'error');
-    if (brand === 'android' && !(Number.isInteger(port) && port > 0 && port < 65536)) return notify('Porta ADB inválida.', 'error');
-    const next: Device = {
-      brand,
+    if (!isValidIp(cleanIp)) { notify('Informe um IP válido, por exemplo 192.168.1.100.', 'error'); return null; }
+    if (cleanMac && !isValidMac(cleanMac)) { notify('MAC inválido. Exemplo: 64:1C:AE:12:34:56', 'error'); return null; }
+    if (platform === 'android' && !(Number.isInteger(port) && port > 0 && port < 65536)) { notify('Porta ADB inválida.', 'error'); return null; }
+    return {
+      platform,
+      maker,
       ip: cleanIp,
-      ...(brand === 'samsung' && cleanMac ? { mac: cleanMac } : {}),
-      ...(brand === 'android' ? { adbPort: port } : {}),
+      ...((platform === 'samsung' || platform === 'lg') && cleanMac ? { mac: cleanMac } : {}),
+      ...(platform === 'android' ? { adbPort: port } : {}),
     };
-    saveDevice(next);
-    setBusy(true);
+  }
+
+  async function connect(next: Device) {
     try {
       const message = await testDevice({ device: next, bridge });
       onDeviceSaved(next, true);
@@ -68,7 +100,42 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
       onClose();
     } catch (error) {
       onDeviceSaved(next, false);
+      if (error instanceof BridgeError && error.needsPairing) {
+        // Google TV ainda não conhece este PC: pede o código que a TV vai mostrar.
+        try {
+          const result = await startGoogleTvPairing(bridge, next.ip);
+          setTvCode('');
+          setAwaitingTvCode(true);
+          notify(result.message);
+        } catch (pairError) {
+          notify(errorMessage(pairError), 'error');
+        }
+        return;
+      }
       notify(`Salvo, mas ainda não conectou. ${errorMessage(error)}`, 'error');
+    }
+  }
+
+  async function saveDeviceForm(e: FormEvent) {
+    e.preventDefault();
+    const next = buildDevice();
+    if (!next) return;
+    saveDevice(next);
+    setBusy(true);
+    await connect(next);
+    setBusy(false);
+  }
+
+  async function confirmTvCode() {
+    const next = buildDevice();
+    if (!next) return;
+    setBusy(true);
+    try {
+      await finishGoogleTvPairing(bridge, next.ip, tvCode.trim());
+      setAwaitingTvCode(false);
+      await connect(next);
+    } catch (error) {
+      notify(errorMessage(error, 'Pareamento não concluído.'), 'error');
     } finally {
       setBusy(false);
     }
@@ -94,7 +161,8 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
     try {
       const result = await discoverDevices(bridge);
       setFound(result.devices);
-      notify(result.devices.length ? `Encontrados ${result.devices.length} aparelhos.` : 'Nenhum aparelho respondeu. Informe o IP manualmente.');
+      const tvs = result.devices.filter(d => d.platform).length;
+      notify(result.devices.length ? `Encontrados ${result.devices.length} aparelhos (${tvs} que o app controla).` : 'Nenhum aparelho respondeu. Informe o IP manualmente.');
     } catch (error) {
       notify(errorMessage(error, 'Busca não concluída.'), 'error');
     } finally {
@@ -102,7 +170,7 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
     }
   }
 
-  async function pair() {
+  async function pairTvBox() {
     if (!isValidIp(ip.trim())) return notify('Informe primeiro o IP da TV Box.', 'error');
     setBusy(true);
     try {
@@ -114,6 +182,8 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
       setBusy(false);
     }
   }
+
+  const certificateUrl = platform === 'samsung' ? samsung.certificateUrl : platform === 'lg' ? lg.certificateUrl : null;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -137,24 +207,38 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
             </button>
             {found.length > 0 && (
               <div className="found-devices">
-                {found.map((d, i) => (
-                  <button key={`${d.ip}-${i}`} type="button" onClick={() => { setIp(d.ip); if (BRANDS.includes(d.brand as Brand)) setBrand(d.brand as Brand); }}>
-                    <Tv size={16} /><span><b>{d.name || 'Aparelho encontrado'}</b><small>{d.ip}{d.brand ? ` • ${BRAND_LABEL[d.brand as Brand] ?? d.brand}` : ''}</small></span>
+                {found.map(d => (
+                  <button key={d.ip} type="button" className={d.platform ? '' : 'unsupported'} onClick={() => chooseFound(d)}>
+                    <Tv size={16} />
+                    <span>
+                      <b>{d.name}</b>
+                      <small>{[d.ip, d.maker ? MAKER_LABEL[d.maker] : d.manufacturer, d.model].filter(Boolean).join(' • ')}</small>
+                      <small className="found-platform">{d.platform ? PLATFORM_LABEL[d.platform] : 'O app ainda não controla este aparelho'}</small>
+                    </span>
                   </button>
                 ))}
               </div>
             )}
             <form onSubmit={saveDeviceForm}>
-              <label htmlFor="brand">Equipamento</label>
-              <select id="brand" value={brand} onChange={e => setBrand(e.target.value as Brand)}>
-                {BRANDS.map(b => <option key={b} value={b}>{BRAND_LABEL[b]}</option>)}
+              <label htmlFor="maker">Marca</label>
+              <select id="maker" value={maker} onChange={e => chooseMaker(e.target.value as Maker)}>
+                {MAKERS.map(m => <option key={m} value={m}>{MAKER_LABEL[m]}</option>)}
               </select>
-              <label htmlFor="ip">Endereço IP do equipamento</label>
-              <input id="ip" value={ip} onChange={e => setIp(e.target.value)} placeholder="Ex.: 192.168.1.100" inputMode="decimal" autoComplete="off" />
-
-              {brand === 'samsung' && (
+              {platforms.length > 1 && (
                 <>
-                  <button type="button" className="secondary-button" disabled={!isValidIp(ip.trim())} onClick={() => window.open(samsung.certificateUrl(ip.trim()), '_blank', 'noopener')}>
+                  <label htmlFor="platform">Sistema da TV</label>
+                  <select id="platform" value={platform} onChange={e => { setPlatform(e.target.value as Platform); setAwaitingTvCode(false); }}>
+                    {platforms.map(p => <option key={p} value={p}>{PLATFORM_LABEL[p]}</option>)}
+                  </select>
+                  <span className="field-help">{SYSTEM_HELP}</span>
+                </>
+              )}
+              <label htmlFor="ip">Endereço IP do equipamento</label>
+              <input id="ip" value={ip} onChange={e => { setIp(e.target.value); setAwaitingTvCode(false); }} placeholder="Ex.: 192.168.1.100" inputMode="decimal" autoComplete="off" />
+
+              {certificateUrl && (
+                <>
+                  <button type="button" className="secondary-button" disabled={!isValidIp(ip.trim())} onClick={() => window.open(certificateUrl(ip.trim()), '_blank', 'noopener')}>
                     <ShieldCheck size={15} /> Autorizar certificado da TV
                   </button>
                   <label htmlFor="mac">MAC da TV (opcional, para ligar pela ponte)</label>
@@ -162,7 +246,17 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
                 </>
               )}
 
-              {brand === 'android' && (
+              {platform === 'googletv' && awaitingTvCode && (
+                <div className="pair-box tv-code">
+                  <span className="field-help">A TV deve estar mostrando um código de 6 caracteres (números e letras de A a F).</span>
+                  <input value={tvCode} onChange={e => setTvCode(e.target.value.toUpperCase().replace(/[^0-9A-F]/g, ''))} placeholder="Código da TV" maxLength={6} autoComplete="off" aria-label="Código mostrado na TV" autoFocus />
+                  <button type="button" className="secondary-button" disabled={busy || tvCode.length !== 6} onClick={() => void confirmTvCode()}>
+                    <Check size={15} /> Confirmar código
+                  </button>
+                </div>
+              )}
+
+              {platform === 'android' && (
                 <>
                   <label htmlFor="adbPort">Porta ADB</label>
                   <input id="adbPort" value={adbPort} onChange={e => setAdbPort(e.target.value)} inputMode="numeric" placeholder="5555" />
@@ -174,7 +268,7 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
                         <input value={pairPort} onChange={e => setPairPort(e.target.value)} placeholder="Porta de pareamento" inputMode="numeric" aria-label="Porta de pareamento" />
                         <input value={pairCode} onChange={e => setPairCode(e.target.value)} placeholder="Código (6 dígitos)" inputMode="numeric" maxLength={6} aria-label="Código de pareamento da TV Box" />
                       </div>
-                      <button type="button" className="secondary-button" disabled={busy || !bridgeOnline} onClick={() => void pair()}>
+                      <button type="button" className="secondary-button" disabled={busy || !bridgeOnline} onClick={() => void pairTvBox()}>
                         <Link2 size={15} /> {bridgeOnline ? 'Parear TV Box' : 'Parear (precisa da ponte)'}
                       </button>
                     </div>
@@ -182,15 +276,18 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
                 </>
               )}
 
-              <div className="modal-note"><Smartphone size={16} /><span>{BRAND_HINT[brand]} O IP costuma aparecer em Configurações › Rede.</span></div>
-              <button className="submit-button" type="submit" disabled={busy}>{busy ? 'Conectando…' : 'Conectar e salvar'} <ChevronRight size={18} /></button>
+              <div className="modal-note"><Smartphone size={16} /><span>{PLATFORM_HINT[platform]} O IP costuma aparecer em Configurações › Rede.</span></div>
+              {BRIDGE_ONLY.includes(platform) && !bridgeOnline && (
+                <div className="status-line bad"><Laptop size={13} /> Este sistema precisa da ponte no PC. Configure na aba "Ponte no PC".</div>
+              )}
+              <button className="submit-button" type="submit" disabled={busy}>{busy ? 'Conectando…' : awaitingTvCode ? 'Gerar outro código' : 'Conectar e salvar'} <ChevronRight size={18} /></button>
               <button className="cancel-button" type="button" onClick={onClose}>Cancelar</button>
             </form>
           </>
         ) : (
           <>
             <p className="modal-description">
-              A ponte é o <b>iniciar-windows.bat</b> aberto num PC da mesma rede. Ela é obrigatória para a TV Box Elsys (ADB) e serve de reserva para Samsung e Roku. O endereço e o código aparecem na janela da ponte.
+              A ponte é o <b>iniciar-windows.bat</b> aberto num PC da mesma rede. Ela é obrigatória para Google TV/Android TV (TCL, AOC, Philips), Philips sem Android e TV Box Elsys, e serve de reserva para Samsung, LG e Roku. O endereço e o código aparecem na janela da ponte.
             </p>
             <form onSubmit={saveBridgeForm}>
               <label htmlFor="bridgeUrl">Endereço da ponte</label>

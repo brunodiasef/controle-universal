@@ -29,3 +29,10 @@
 .channel-buttons span{font-size:10px;letter-spacing:1px;color:#8b92a1;padding:2px 0}
 .keyboard-panel .send{color:var(--mint)}
 button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.found-devices{max-height:220px}
+.found-devices button.unsupported{opacity:.55;color:#8b94a4}
+.found-devices .found-platform{color:var(--mint);font-weight:600}
+.found-devices button.unsupported .found-platform{color:#8b94a4;font-weight:500}
+.tv-code{display:flex;flex-direction:column;gap:9px;border-color:#294b45}
+.tv-code input{text-align:center;font-size:20px!important;letter-spacing:6px;font-weight:700}
+.tv-code input::placeholder{font-size:13px;letter-spacing:1px;font-weight:500}

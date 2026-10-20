@@ -1,7 +1,8 @@
 // Ponte local do Smart Remote.
 // - Serve a interface compilada (dist/) em http://IP-DO-PC:4317
-// - Faz o que o navegador não consegue: ADB (Elsys/Android TV), busca SSDP, Wake-on-LAN
-//   e Samsung/Roku quando a conexão direta do navegador é bloqueada.
+// - Faz o que o navegador não consegue: Google TV/Android TV (TCL, AOC, Philips), ADB (Elsys),
+//   Philips sem Android, busca de aparelhos e Wake-on-LAN
+// - Serve de reserva para Samsung, LG e Roku quando a conexão direta do navegador é bloqueada.
 // Só aceita aparelhos da rede local e exige o código de pareamento em todas as ações.
 import http from 'node:http';
 import dgram from 'node:dgram';
@@ -14,6 +15,11 @@ import { fileURLToPath } from 'node:url';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import WebSocket from 'ws';
 import keymaps from '../shared/keymaps.json' with { type: 'json' };
+import { createLgClient, LgConnectError, LgRefused } from '../shared/lg-protocol.js';
+import { createGoogleTv, NotPairedError } from './googletv.mjs';
+import { createSelfSignedCertificate } from './x509.mjs';
+import { discover } from './discovery.mjs';
+import { philipsApi, philipsKey, PhilipsError } from './philips.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -28,7 +34,7 @@ class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-// ---------- Estado persistente (código de pareamento e tokens da Samsung) ----------
+// ---------- Estado persistente (código de pareamento, tokens das TVs e certificado do Google TV) ----------
 function loadState() {
   try { return JSON.parse(readFileSync(STATE_FILE, 'utf8')); } catch { return {}; }
 }
@@ -41,6 +47,7 @@ if (!/^\d{6}$/.test(state.pairingCode || '') || process.argv.includes('--novo-co
   state.pairingCode = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
 }
 state.samsungTokens ??= {};
+state.lgClientKeys ??= {};
 saveState();
 
 // ---------- Endereços ----------
@@ -123,12 +130,15 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
+const PLATFORMS = ['samsung', 'lg', 'roku', 'googletv', 'philips', 'android'];
 function parseDevice(body) {
-  if (!['samsung', 'roku', 'android'].includes(body.brand)) throw new HttpError(400, 'Equipamento não suportado pela ponte.');
+  // "brand" é o nome usado até a versão 1.2.0.
+  const platform = body.platform ?? body.brand;
+  if (!PLATFORMS.includes(platform)) throw new HttpError(400, 'Equipamento não suportado pela ponte.');
   if (!isPrivateIpv4(body.ip)) throw new HttpError(400, 'Use o IP local do aparelho, por exemplo 192.168.1.100.');
   const adbPort = body.adbPort == null ? 5555 : validPort(body.adbPort);
   if (!adbPort) throw new HttpError(400, 'Porta ADB inválida.');
-  return { brand: body.brand, ip: body.ip, adbPort };
+  return { platform, ip: body.ip, adbPort };
 }
 function lookup(table, name, what) {
   if (typeof name !== 'string' || !Object.hasOwn(table, name)) throw new HttpError(400, `${what} não reconhecido.`);
@@ -283,72 +293,141 @@ function wake(mac) {
   });
 }
 
-// ---------- Descoberta SSDP ----------
-function guessBrand(text) {
-  if (/roku/i.test(text)) return 'roku';
-  if (/samsung/i.test(text)) return 'samsung';
-  if (/android|elsys|amlogic|rockchip/i.test(text)) return 'android';
-  return undefined;
+// ---------- LG webOS (mesmo protocolo usado pelo navegador) ----------
+const lg = createLgClient({
+  // A LG usa um certificado próprio; na rede local aceitamos sem validar a cadeia.
+  createSocket: url => new WebSocket(url, { rejectUnauthorized: false, handshakeTimeout: 7000 }),
+  loadKey: ip => state.lgClientKeys[ip],
+  saveKey: (ip, key) => { if (state.lgClientKeys[ip] !== key) { state.lgClientKeys[ip] = key; saveState(); } },
+  urls: ip => [`wss://${ip}:3001`, `ws://${ip}:3000`],
+});
+async function lgCall(task) {
+  try { return await task(); }
+  catch (error) {
+    if (error instanceof LgRefused) throw new HttpError(403, 'A LG recusou o controle. Conecte de novo e aceite o pedido que aparece na tela da TV.');
+    if (error instanceof LgConnectError) {
+      throw new HttpError(502, error.reasons.includes('auth-timeout')
+        ? 'A LG não respondeu ao pedido de permissão. Olhe a tela da TV, aceite e tente de novo.'
+        : 'Não consegui conectar à LG (portas 3001/3000). Confirme se a TV está ligada, na mesma rede e com "LG Connect Apps" ativado.');
+    }
+    throw new HttpError(502, `A LG não aceitou o comando: ${error.message}`);
+  }
 }
-function discover() {
-  return new Promise(resolve => {
-    const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-    const found = new Map();
-    const searches = ['ssdp:all', 'roku:ecp', 'urn:samsung.com:device:RemoteControlReceiver:1'].map(st => Buffer.from(
-      `M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ${st}\r\n\r\n`));
-    const done = () => { try { socket.close(); } catch {} resolve({ devices: [...found.values()] }); };
-    socket.on('message', (msg, rinfo) => {
-      if (!isPrivateIpv4(rinfo.address)) return;
-      const text = msg.toString();
-      const server = text.match(/^SERVER:\s*(.+)$/im)?.[1]?.trim() || '';
-      const st = text.match(/^ST:\s*(.+)$/im)?.[1]?.trim() || '';
-      const previous = found.get(rinfo.address);
-      const brand = guessBrand(`${server} ${st}`) || previous?.brand;
-      found.set(rinfo.address, { ip: rinfo.address, name: previous?.name || server || 'Dispositivo UPnP', brand });
-    });
-    socket.on('error', done);
-    socket.bind(() => {
-      for (const message of searches) { try { socket.send(message, 1900, '239.255.255.250'); } catch {} }
-      setTimeout(done, 3200);
-    });
-  });
+
+// ---------- Google TV / Android TV ----------
+const googleTv = createGoogleTv({
+  appName: 'Smart Remote',
+  version: VERSION,
+  getCredentials() {
+    if (!state.googleTv?.cert) { state.googleTv = createSelfSignedCertificate('Smart Remote'); saveState(); }
+    return state.googleTv;
+  },
+});
+async function googleTvCall(task) {
+  try { return await task(); }
+  catch (error) {
+    if (error instanceof NotPairedError) {
+      throw Object.assign(new HttpError(409, 'Esta TV ainda não foi pareada com o Smart Remote. Toque em "Parear" e digite o código que aparecer na TV.'), { needsPairing: true });
+    }
+    if (error.message === 'refused') throw new HttpError(502, 'A TV recusou a conexão (porta 6466). Confirme se é Google TV/Android TV e se está ligada.');
+    if (error.message === 'unreachable') throw new HttpError(502, 'A TV não respondeu. Confirme se está ligada e na mesma rede.');
+    throw new HttpError(502, `A TV não aceitou o comando: ${error.message}`);
+  }
+}
+async function startGoogleTvPairing(body) {
+  if (!isPrivateIpv4(body.ip)) throw new HttpError(400, 'IP inválido.');
+  try { await googleTv.startPairing(body.ip); }
+  catch (error) {
+    if (error.message === 'refused') throw new HttpError(502, 'A TV recusou o pareamento (porta 6467). Confirme se ela é Google TV/Android TV.');
+    throw new HttpError(502, 'Não consegui iniciar o pareamento. Confirme se a TV está ligada e na mesma rede.');
+  }
+  return 'Digite o código de 6 caracteres que apareceu na TV.';
+}
+async function finishGoogleTvPairing(body) {
+  if (!isPrivateIpv4(body.ip)) throw new HttpError(400, 'IP inválido.');
+  try { await googleTv.finishPairing(body.ip, body.code); }
+  catch (error) {
+    const messages = {
+      'bad-format': 'O código tem 6 caracteres, com números e letras de A a F.',
+      'bad-code': 'Código incorreto. Confira as letras e números na tela da TV e tente de novo.',
+      'bad-secret': 'A TV recusou o código. Toque em "Parear" de novo para gerar outro.',
+      'no-pairing': 'O pareamento expirou. Toque em "Parear" de novo.',
+    };
+    throw new HttpError(400, messages[error.message] ?? 'A TV não confirmou o pareamento. Tente de novo.');
+  }
+  await googleTvCall(() => googleTv.connect(body.ip));
+  return 'TV pareada e conectada.';
+}
+
+async function philipsCall(task) {
+  try { return await task(); }
+  catch (error) {
+    if (error instanceof PhilipsError) throw new HttpError(error.status, error.message);
+    throw error;
+  }
 }
 
 // ---------- Ações ----------
+const NAMES = { samsung: 'à Samsung', lg: 'à LG', roku: 'ao Roku', googletv: 'à TV', philips: 'à Philips', android: 'à TV Box' };
+
 async function connectDevice(device) {
-  if (device.brand === 'samsung') {
-    await connectSamsung(device.ip);
+  const { platform, ip } = device;
+  if (platform === 'samsung') {
+    await connectSamsung(ip);
     return 'Samsung conectada pela ponte. Se a TV pedir permissão, aceite com o controle original.';
   }
-  if (device.brand === 'roku') {
+  if (platform === 'lg') {
+    await lgCall(() => lg.connect(ip));
+    return 'LG conectada pela ponte.';
+  }
+  if (platform === 'roku') {
     try {
-      const res = await fetch(`http://${device.ip}:8060/query/device-info`, { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(`http://${ip}:8060/query/device-info`, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) throw new Error();
-    } catch { throw new HttpError(502, `Não encontrei um Roku em ${device.ip}:8060.`); }
+    } catch { throw new HttpError(502, `Não encontrei um Roku em ${ip}:8060.`); }
     return 'Roku encontrado pela ponte.';
+  }
+  if (platform === 'googletv') {
+    await googleTvCall(() => googleTv.connect(ip));
+    return 'TV conectada pela ponte.';
+  }
+  if (platform === 'philips') {
+    await philipsCall(() => philipsApi(ip));
+    return 'Philips encontrada pela ponte.';
   }
   await adbShell(device, ['echo', 'ok']);
   return 'TV Box conectada por ADB.';
 }
 async function command(device, action) {
-  const key = lookup(keymaps[device.brand].keys, action, 'Comando');
-  if (device.brand === 'samsung') { await samsung.key(device.ip, key); return `Comando enviado à Samsung pela ponte.`; }
-  if (device.brand === 'roku') { await rokuPost(device.ip, `keypress/${key}`); return 'Comando enviado ao Roku pela ponte.'; }
-  await adbShell(device, ['input', 'keyevent', key]);
-  return 'Comando enviado à TV Box.';
+  const { platform, ip } = device;
+  const key = lookup(keymaps[platform].keys, action, 'Comando');
+  if (platform === 'samsung') await samsung.key(ip, key);
+  else if (platform === 'lg') await lgCall(() => lg.press(ip, key));
+  else if (platform === 'roku') await rokuPost(ip, `keypress/${key}`);
+  else if (platform === 'googletv') await googleTvCall(() => googleTv.key(ip, key));
+  else if (platform === 'philips') await philipsCall(() => philipsKey(ip, key));
+  else await adbShell(device, ['input', 'keyevent', key]);
+  return `Comando enviado ${NAMES[platform]}.`;
 }
 async function launchApp(device, app) {
-  const ids = lookup(keymaps[device.brand].apps, app, 'Aplicativo');
-  if (device.brand === 'samsung') { await samsung.launch(device.ip, ids); return `Pedido para abrir ${app} enviado à Samsung.`; }
-  if (device.brand === 'roku') { await rokuPost(device.ip, `launch/${ids[0]}`); return `Pedido para abrir ${app} enviado ao Roku.`; }
-  await adbShell(device, ['monkey', '-p', ids[0], '-c', 'android.intent.category.LEANBACK_LAUNCHER', '1']);
-  return `Pedido para abrir ${app} enviado à TV Box.`;
+  const { platform, ip } = device;
+  if (platform === 'philips') throw new HttpError(501, 'Abrir aplicativos não é possível nesta Philips. Use o botão Home e escolha o app na TV.');
+  const ids = lookup(keymaps[platform].apps, app, 'Aplicativo');
+  if (platform === 'samsung') await samsung.launch(ip, ids);
+  else if (platform === 'lg') await lgCall(() => lg.launch(ip, ids[0]));
+  else if (platform === 'roku') await rokuPost(ip, `launch/${ids[0]}`);
+  else if (platform === 'googletv') await googleTvCall(() => googleTv.launch(ip, ids[0]));
+  else await adbShell(device, ['monkey', '-p', ids[0], '-c', 'android.intent.category.LEANBACK_LAUNCHER', '1']);
+  return `Pedido para abrir ${app} enviado ${NAMES[platform]}.`;
 }
 async function sendText(device, text) {
+  const { platform, ip } = device;
   if (typeof text !== 'string' || !text.trim() || text.length > 200) throw new HttpError(400, 'Digite um texto de até 200 caracteres.');
-  if (device.brand === 'samsung') { await samsung.text(device.ip, text); return 'Texto enviado. Ele aparece se o teclado da TV estiver aberto.'; }
-  if (device.brand === 'roku') {
-    for (const ch of text) await rokuPost(device.ip, `keypress/Lit_${encodeURIComponent(ch)}`);
+  if (platform === 'googletv' || platform === 'philips') throw new HttpError(501, 'Digitar pelo app ainda não funciona neste sistema. Use o teclado na tela da TV.');
+  if (platform === 'samsung') { await samsung.text(ip, text); return 'Texto enviado. Ele aparece se o teclado da TV estiver aberto.'; }
+  if (platform === 'lg') { await lgCall(() => lg.text(ip, text)); return 'Texto enviado. Ele aparece se o teclado da TV estiver aberto.'; }
+  if (platform === 'roku') {
+    for (const ch of text) await rokuPost(ip, `keypress/Lit_${encodeURIComponent(ch)}`);
     return 'Texto enviado ao Roku.';
   }
   await adbShell(device, ['input', 'text', adbText(text)]);
@@ -396,12 +475,14 @@ function serveStatic(req, res, url) {
 
 // ---------- Servidor ----------
 const routes = {
-  'GET /api/discover': () => discover(),
+  'GET /api/discover': async () => ({ devices: await discover({ isLocalIp: isPrivateIpv4 }) }),
   'POST /api/connect': async body => ({ ok: true, message: await connectDevice(parseDevice(body)) }),
   'POST /api/command': async body => ({ ok: true, message: await command(parseDevice(body), body.action) }),
   'POST /api/app': async body => ({ ok: true, message: await launchApp(parseDevice(body), body.app) }),
   'POST /api/text': async body => ({ ok: true, message: await sendText(parseDevice(body), body.text) }),
   'POST /api/adb-pair': async body => ({ ok: true, message: await pairAdb(body) }),
+  'POST /api/googletv/pair/start': async body => ({ ok: true, message: await startGoogleTvPairing(body) }),
+  'POST /api/googletv/pair/finish': async body => ({ ok: true, message: await finishGoogleTvPairing(body) }),
   'POST /api/wake': async body => { await wake(body.mac); return { ok: true, message: 'Sinal para ligar a TV enviado (Wake-on-LAN).' }; },
 };
 
@@ -427,7 +508,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(req, res, 200, await handler(body));
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 502;
-    return sendJson(req, res, status, { error: error instanceof Error ? error.message : 'Erro interno da ponte.' });
+    return sendJson(req, res, status, { error: error instanceof Error ? error.message : 'Erro interno da ponte.', ...(error?.needsPairing ? { needsPairing: true } : {}) });
   }
 });
 
@@ -453,6 +534,8 @@ server.listen(PORT, '0.0.0.0', () => {
 
 process.on('SIGINT', () => {
   for (const ws of samsungSockets.values()) { try { ws.close(); } catch {} }
+  lg.close();
+  googleTv.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();
 });
