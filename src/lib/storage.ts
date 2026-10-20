@@ -49,6 +49,14 @@ export function saveDevice(device: Device) {
   write('smartRemoteDevice', device);
 }
 
+/** Desconectar: esquece a TV. As permissões da Samsung/LG ficam, para não pedir de novo na mesma TV. */
+export function forgetDevice() {
+  try {
+    localStorage.removeItem('smartRemoteDevice');
+    localStorage.removeItem('rokuIp');
+  } catch { /* sem armazenamento */ }
+}
+
 export function loadBridge(): BridgeConfig {
   const saved = read<BridgeConfig>('smartRemoteBridge');
   if (saved && typeof saved.url === 'string' && typeof saved.key === 'string') return saved;

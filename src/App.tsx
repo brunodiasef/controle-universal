@@ -9,8 +9,8 @@ import { TypePanel } from './TypePanel';
 import { RemoteArt } from './RemoteArt';
 import { BRIDGE_STATUS_TEXT, SettingsModal } from './Settings';
 import { bridgeHealth, BridgeError } from './lib/bridge';
-import { INPUT_CHOICES, hasInputs, openApp, selectInput, sendAction, testDevice, typeOps, type RemoteContext } from './lib/remote';
-import { loadBridge, loadDevice, saveBridge } from './lib/storage';
+import { INPUT_CHOICES, disconnectDevice, hasInputs, openApp, selectInput, sendAction, testDevice, typeOps, type RemoteContext } from './lib/remote';
+import { forgetDevice, loadBridge, loadDevice, saveBridge } from './lib/storage';
 import { BRIDGE_ONLY, TYPING_MODE, deviceLabel, errorMessage, type BridgeConfig, type BridgeStatus, type Device, type Platform, type RemoteAction, type StreamingApp } from './lib/types';
 
 type Toast = { text: string; kind: 'ok' | 'error' };
@@ -307,6 +307,16 @@ export default function App() {
       notify={notify}
       onClose={() => setShowSettings(false)}
       onDeviceSaved={(next, ok) => { setDevice(next); setConnected(ok); }}
+      onForget={() => {
+        if (device) disconnectDevice(device);
+        forgetDevice();
+        setDevice(null);
+        setConnected(false);
+        setShowTouch(false);
+        setTyping(false);
+        setShowSettings(false);
+        notify('TV desconectada. Toque em Conectar para escolher outra.');
+      }}
       onBridgeSaved={handleBridgeSaved}
     />}
   </main>

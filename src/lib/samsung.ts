@@ -132,4 +132,9 @@ export const samsung = {
     }
   },
   certificateUrl: (ip: string) => `https://${ip}:8002/api/v2/`,
+  disconnect(ip: string) {
+    const ws = sockets.get(ip);
+    sockets.delete(ip);
+    try { ws?.close(); } catch { /* já fechado */ }
+  },
 };

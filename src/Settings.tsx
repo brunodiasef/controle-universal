@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Check, ChevronRight, KeyRound, Laptop, Link2, Radio, RefreshCw, ShieldCheck, Smartphone, Tv, X } from 'lucide-react';
+import { Check, ChevronRight, KeyRound, Unplug, Laptop, Link2, Radio, RefreshCw, ShieldCheck, Smartphone, Tv, X } from 'lucide-react';
 import { BridgeError, normalizeBridgeUrl } from './lib/bridge';
 import { lg } from './lib/lg';
 import { discoverDevices, finishGoogleTvPairing, pairAdb, startGoogleTvPairing, testDevice } from './lib/remote';
@@ -7,7 +7,7 @@ import { samsung } from './lib/samsung';
 import { scanNetwork, type ScanProgress } from './lib/scan';
 import { saveDevice } from './lib/storage';
 import {
-  BRIDGE_ONLY, MAKERS, MAKER_LABEL, MAKER_PLATFORMS, PLATFORM_LABEL, defaultMaker, errorMessage, isValidIp, isValidMac, localAccessHint,
+  BRIDGE_ONLY, MAKERS, MAKER_LABEL, MAKER_PLATFORMS, PLATFORM_LABEL, defaultMaker, deviceLabel, errorMessage, isValidIp, isValidMac, localAccessHint,
   type BridgeConfig, type BridgeStatus, type Device, type DiscoveredDevice, type Maker, type Platform,
 } from './lib/types';
 
@@ -17,6 +17,7 @@ type Props = {
   bridgeStatus: BridgeStatus;
   onClose: () => void;
   onDeviceSaved: (device: Device, connected: boolean) => void;
+  onForget: () => void;
   onBridgeSaved: (config: BridgeConfig) => Promise<BridgeStatus>;
   notify: (text: string, kind?: 'ok' | 'error') => void;
 };
@@ -41,7 +42,7 @@ export const BRIDGE_STATUS_TEXT: Record<BridgeStatus, string> = {
   offline: 'Ponte não encontrada nesse endereço.',
 };
 
-export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceSaved, onBridgeSaved, notify }: Props) {
+export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceSaved, onForget, onBridgeSaved, notify }: Props) {
   const [tab, setTab] = useState<'device' | 'bridge'>('device');
   const [maker, setMaker] = useState<Maker>(device ? device.maker ?? defaultMaker(device.platform) : 'samsung');
   const [platform, setPlatform] = useState<Platform>(device?.platform ?? 'samsung');
@@ -315,6 +316,7 @@ export function SettingsModal({ device, bridge, bridgeStatus, onClose, onDeviceS
                 <div className="status-line bad"><Laptop size={13} /> Este sistema precisa da ponte no PC. Configure na aba "Ponte no PC".</div>
               )}
               <button className="submit-button" type="submit" disabled={busy}>{busy ? 'Conectando…' : awaitingTvCode ? 'Gerar outro código' : 'Conectar e salvar'} <ChevronRight size={18} /></button>
+              {device && <button className="disconnect-button" type="button" onClick={onForget}><Unplug size={15} /> Desconectar esta TV ({deviceLabel(device)} • {device.ip})</button>}
               <button className="cancel-button" type="button" onClick={onClose}>Cancelar</button>
             </form>
           </>

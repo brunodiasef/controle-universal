@@ -44,4 +44,5 @@ export const lg = {
   }),
   input: (ip: string, choice: string) => call(ip, () => client.input(ip, (keymaps.lg.inputs as Record<string, string>)[choice])),
   certificateUrl: (ip: string) => `https://${ip}:3001/`,
+  disconnect: () => client.close(),
 };

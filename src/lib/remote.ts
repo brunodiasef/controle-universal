@@ -136,6 +136,11 @@ export async function selectInput(ctx: RemoteContext, choice?: string): Promise<
   return route(ctx, null, '/input', extra);
 }
 
+export function disconnectDevice(device: Device) {
+  if (device.platform === 'samsung') samsung.disconnect(device.ip);
+  if (device.platform === 'lg') lg.disconnect();
+}
+
 export function pairAdb(bridge: BridgeConfig, ip: string, port: number, code: string) {
   return bridgeRequest<{ message: string }>(bridge, '/adb-pair', { ip, port, code });
 }
