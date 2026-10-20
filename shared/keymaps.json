@@ -1,0 +1,41 @@
+{
+  "samsung": {
+    "keys": {
+      "Up": "KEY_UP", "Down": "KEY_DOWN", "Left": "KEY_LEFT", "Right": "KEY_RIGHT", "Enter": "KEY_ENTER",
+      "Back": "KEY_RETURN", "Home": "KEY_HOME", "Menu": "KEY_MENU", "Power": "KEY_POWER", "Smart": "KEY_SMART_HUB",
+      "VolumeUp": "KEY_VOLUP", "VolumeDown": "KEY_VOLDOWN", "Mute": "KEY_MUTE", "ChannelUp": "KEY_CHUP", "ChannelDown": "KEY_CHDOWN",
+      "PlayPause": "KEY_PLAY_PAUSE", "Previous": "KEY_REWIND", "Next": "KEY_FF"
+    },
+    "apps": {
+      "Netflix": ["3201907018807", "11101200001"],
+      "YouTube": ["111299001912"],
+      "Prime Video": ["3201512006785"]
+    }
+  },
+  "roku": {
+    "keys": {
+      "Up": "Up", "Down": "Down", "Left": "Left", "Right": "Right", "Enter": "Select",
+      "Back": "Back", "Home": "Home", "Menu": "Info", "Power": "Power", "Smart": "Search",
+      "VolumeUp": "VolumeUp", "VolumeDown": "VolumeDown", "Mute": "VolumeMute", "ChannelUp": "ChannelUp", "ChannelDown": "ChannelDown",
+      "PlayPause": "Play", "Previous": "Rev", "Next": "Fwd"
+    },
+    "apps": {
+      "Netflix": ["12"],
+      "YouTube": ["837"],
+      "Prime Video": ["13"]
+    }
+  },
+  "android": {
+    "keys": {
+      "Up": "KEYCODE_DPAD_UP", "Down": "KEYCODE_DPAD_DOWN", "Left": "KEYCODE_DPAD_LEFT", "Right": "KEYCODE_DPAD_RIGHT", "Enter": "KEYCODE_DPAD_CENTER",
+      "Back": "KEYCODE_BACK", "Home": "KEYCODE_HOME", "Menu": "KEYCODE_MENU", "Power": "KEYCODE_POWER", "Smart": "KEYCODE_SEARCH",
+      "VolumeUp": "KEYCODE_VOLUME_UP", "VolumeDown": "KEYCODE_VOLUME_DOWN", "Mute": "KEYCODE_VOLUME_MUTE", "ChannelUp": "KEYCODE_CHANNEL_UP", "ChannelDown": "KEYCODE_CHANNEL_DOWN",
+      "PlayPause": "KEYCODE_MEDIA_PLAY_PAUSE", "Previous": "KEYCODE_MEDIA_PREVIOUS", "Next": "KEYCODE_MEDIA_NEXT"
+    },
+    "apps": {
+      "Netflix": ["com.netflix.ninja"],
+      "YouTube": ["com.google.android.youtube.tv"],
+      "Prime Video": ["com.amazon.amazonvideo.livingroom"]
+    }
+  }
+}

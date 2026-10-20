@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+# Código de pareamento e tokens da TV gerados pela ponte: nunca enviar ao GitHub
+backend/.data/
+# ADB baixado pelo usuário (Android SDK Platform-Tools)
+platform-tools/
