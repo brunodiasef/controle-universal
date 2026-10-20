@@ -25,6 +25,7 @@ export const roku = {
   test: (ip: string) => request(ip, 'query/device-info', 'GET'),
   key: (ip: string, action: RemoteAction) => request(ip, `keypress/${keymaps.roku.keys[action]}`, 'POST'),
   launch: (ip: string, app: StreamingApp) => request(ip, `launch/${keymaps.roku.apps[app][0]}`, 'POST'),
+  input: (ip: string, choice: string) => request(ip, `keypress/${(keymaps.roku.inputs as Record<string, string>)[choice]}`, 'POST'),
   async text(ip: string, text: string) {
     for (const ch of text) await request(ip, `keypress/Lit_${encodeURIComponent(ch)}`, 'POST');
   },

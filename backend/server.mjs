@@ -433,6 +433,21 @@ async function sendText(device, text) {
   await adbShell(device, ['input', 'text', adbText(text)]);
   return 'Texto enviado à TV Box.';
 }
+async function selectInput(device, choice) {
+  const { platform, ip } = device;
+  const map = keymaps[platform];
+  if (map.inputs) {
+    const value = lookup(map.inputs, choice, 'Nome de entrada');
+    if (platform === 'roku') await rokuPost(ip, `keypress/${value}`);
+    else await lgCall(() => lg.input(ip, value));
+    return `Mudando para ${choice}.`;
+  }
+  if (map.input === undefined) throw new HttpError(400, 'Este aparelho não tem entradas.');
+  if (platform === 'samsung') await samsung.key(ip, map.input);
+  else if (platform === 'googletv') await googleTvCall(() => googleTv.key(ip, map.input));
+  else if (platform === 'philips') await philipsCall(() => philipsKey(ip, map.input));
+  return 'Menu de entradas aberto na TV.';
+}
 async function pairAdb(body) {
   if (!isPrivateIpv4(body.ip)) throw new HttpError(400, 'IP inválido.');
   const port = validPort(body.port);
@@ -480,6 +495,7 @@ const routes = {
   'POST /api/command': async body => ({ ok: true, message: await command(parseDevice(body), body.action) }),
   'POST /api/app': async body => ({ ok: true, message: await launchApp(parseDevice(body), body.app) }),
   'POST /api/text': async body => ({ ok: true, message: await sendText(parseDevice(body), body.text) }),
+  'POST /api/input': async body => ({ ok: true, message: await selectInput(parseDevice(body), body.input) }),
   'POST /api/adb-pair': async body => ({ ok: true, message: await pairAdb(body) }),
   'POST /api/googletv/pair/start': async body => ({ ok: true, message: await startGoogleTvPairing(body) }),
   'POST /api/googletv/pair/finish': async body => ({ ok: true, message: await finishGoogleTvPairing(body) }),

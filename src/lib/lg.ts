@@ -35,5 +35,6 @@ export const lg = {
   key: (ip: string, action: RemoteAction) => call(ip, () => client.press(ip, keymaps.lg.keys[action])),
   launch: (ip: string, app: StreamingApp) => call(ip, () => client.launch(ip, keymaps.lg.apps[app][0])),
   text: (ip: string, text: string) => call(ip, () => client.text(ip, text)),
+  input: (ip: string, choice: string) => call(ip, () => client.input(ip, (keymaps.lg.inputs as Record<string, string>)[choice])),
   certificateUrl: (ip: string) => `https://${ip}:3001/`,
 };

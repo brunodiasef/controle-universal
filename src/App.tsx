@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, Volume2, VolumeX, Plus, Minus, Mic, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, Send } from 'lucide-react';
+import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, Volume2, VolumeX, Plus, Minus, Mic, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, Send, LogIn, LayoutGrid, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import primeVideoLogo from './assets/prime-video.png';
+import { Intro } from './Intro';
 import { BRIDGE_STATUS_TEXT, SettingsModal } from './Settings';
 import { bridgeHealth, BridgeError } from './lib/bridge';
-import { openApp, sendAction, sendText, testDevice, type RemoteContext } from './lib/remote';
+import { INPUT_CHOICES, hasInputs, openApp, selectInput, sendAction, sendText, testDevice, type RemoteContext } from './lib/remote';
 import { loadBridge, loadDevice, saveBridge } from './lib/storage';
 import { BRIDGE_ONLY, deviceLabel, errorMessage, type BridgeConfig, type BridgeStatus, type Device, type Platform, type RemoteAction, type StreamingApp } from './lib/types';
 
 type Toast = { text: string; kind: 'ok' | 'error' };
 
 // Rótulos dos botões "Smart" e "Menu" conforme o que cada sistema faz com eles.
+const SMART_ICON: Record<string, LucideIcon> = { SMART: LayoutGrid, BUSCAR: Search, AJUSTES: SlidersHorizontal };
 const BUTTON_LABELS: Record<Platform, { smart: string; menu: string }> = {
   samsung: { smart: 'SMART', menu: 'MENU' },
   lg: { smart: 'AJUSTES', menu: 'MENU' },
@@ -48,6 +50,9 @@ export default function App() {
   const [sent, setSent] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [showInputs, setShowInputs] = useState(false);
+  const [intro, setIntro] = useState<'assemble' | 'reveal' | 'done'>('assemble');
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const toastTimer = useRef(0);
   const sentTimer = useRef(0);
   const statusRef = useRef(bridgeStatus);
@@ -127,6 +132,17 @@ export default function App() {
     void run(ctx => sendAction(ctx, action), action !== 'Power');
   }
 
+  function openInputs() {
+    if (!device) { void run(ctx => selectInput(ctx)); return; }
+    if (INPUT_CHOICES[device.platform]) setShowInputs(true);
+    else void run(ctx => selectInput(ctx));
+  }
+
+  function chooseInput(choice: string) {
+    setShowInputs(false);
+    void run(ctx => selectInput(ctx, choice));
+  }
+
   function launch(app: StreamingApp) {
     void run(ctx => openApp(ctx, app));
   }
@@ -150,9 +166,12 @@ export default function App() {
     : `● ${BRIDGE_STATUS_TEXT[bridgeStatus]}`;
   const pill = busy ? 'ENVIANDO' : sent ? 'ENVIADO' : connected ? 'CONECTADO' : device ? 'PRONTO' : 'SEM TV';
 
-  return <main className="app-shell">
+  const smartLabel = device ? BUTTON_LABELS[device.platform].smart : 'SMART';
+  const SmartIcon = SMART_ICON[smartLabel] ?? LayoutGrid;
+
+  return <><main className={`app-shell intro-${intro}`}>
     <header className="topbar">
-      <div className="brand-lockup"><div className="brand-icon"><Tv size={23} /><span /></div><div><p className="eyebrow">CONTROLE</p><h1>Bruno<span>Versal</span></h1></div></div>
+      <div className="brand-lockup"><div className="brand-icon"><Tv size={23} /><span /></div><div><p className="eyebrow">CONTROLE</p><h1 ref={titleRef}>Bruno<span>Versal</span></h1></div></div>
       <button className="icon-button settings" aria-label="Configurações" onClick={() => setShowSettings(true)}><Settings2 size={20} /></button>
     </header>
 
@@ -175,14 +194,18 @@ export default function App() {
 
     <section className="section-heading remote-heading"><div><p className="eyebrow">CONTROLE PRINCIPAL</p><h2>Seu controle remoto</h2></div><span className={`live-pill ${sent ? 'sent' : ''}`}><span /> {pill}</span></section>
     <section className="remote-card">
-      <div className="remote-top"><span className="remote-mini-label"><Tv size={15} /> {device ? deviceLabel(device).toUpperCase() : 'SMART TV / TV BOX'}</span><button className="power-button" aria-label="Ligar ou desligar" onClick={() => press('Power')}><Power size={21} /></button></div>
+      <div className="remote-top"><span className="remote-mini-label"><Tv size={15} /><span>{device ? deviceLabel(device).toUpperCase() : 'SMART TV / TV BOX'}</span></span><div className="remote-top-actions">{(!device || hasInputs(device.platform)) && <button className="input-button" aria-label="Entradas" onClick={openInputs}><LogIn size={17} /><span>ENTRADAS</span></button>}<button className="power-button" aria-label="Ligar ou desligar" onClick={() => press('Power')}><Power size={21} /></button></div></div>
       <div className="quick-actions">
-        <button onClick={() => press('Smart')} className="quick-action smart-action"><span className="smart-glyph"><span /><span /><span /><span /></span><span>{device ? BUTTON_LABELS[device.platform].smart : 'SMART'}</span></button>
+        <button onClick={() => press('Smart')} className="quick-action"><SmartIcon size={20} /><span>{smartLabel}</span></button>
         <button onClick={() => press('Home')} className="quick-action"><Home size={20} /><span>HOME</span></button>
         <button onClick={() => press('Back')} className="quick-action"><ArrowLeft size={20} /><span>VOLTAR</span></button>
         <button onClick={() => press('Menu')} className="quick-action"><Menu size={20} /><span>{device ? BUTTON_LABELS[device.platform].menu : 'MENU'}</span></button>
       </div>
       <div className="control-body">
+        <div className="side-control"><span className="side-label">VOLUME</span>
+          <div className="vertical-control"><button onClick={() => press('VolumeUp')} aria-label="Aumentar volume"><Plus /></button><span className="volume-icon"><Volume2 size={15} /></span><button onClick={() => press('VolumeDown')} aria-label="Diminuir volume"><Minus /></button></div>
+          <button className="mute-button" onClick={() => press('Mute')} aria-label="Silenciar ou reativar o som"><VolumeX /></button>
+        </div>
         <div className="dpad" aria-label="Controle direcional">
           <button className="dpad-up" onClick={() => press('Up')} aria-label="Cima"><ChevronUp /></button>
           <button className="dpad-left" onClick={() => press('Left')} aria-label="Esquerda"><ChevronLeft /></button>
@@ -190,14 +213,8 @@ export default function App() {
           <button className="dpad-right" onClick={() => press('Right')} aria-label="Direita"><ChevronRight /></button>
           <button className="dpad-down" onClick={() => press('Down')} aria-label="Baixo"><ChevronDown /></button>
         </div>
-        <div className="side-controls">
-          <div className="side-control"><span className="side-label">VOLUME</span>
-            <div className="vertical-control"><button onClick={() => press('VolumeUp')} aria-label="Aumentar volume"><Plus /></button><span className="volume-icon"><Volume2 size={15} /></span><button onClick={() => press('VolumeDown')} aria-label="Diminuir volume"><Minus /></button></div>
-            <button className="mute-button" onClick={() => press('Mute')} aria-label="Silenciar ou reativar o som"><VolumeX /></button>
-          </div>
-          <div className="side-control"><span className="side-label">CANAL</span>
-            <div className="channel-buttons"><button onClick={() => press('ChannelUp')} aria-label="Canal seguinte"><Plus /></button><span>CH</span><button onClick={() => press('ChannelDown')} aria-label="Canal anterior"><Minus /></button></div>
-          </div>
+        <div className="side-control"><span className="side-label">CANAL</span>
+          <div className="channel-buttons"><button onClick={() => press('ChannelUp')} aria-label="Canal seguinte"><Plus /></button><span>CH</span><button onClick={() => press('ChannelDown')} aria-label="Canal anterior"><Minus /></button></div>
         </div>
       </div>
       <div className="media-controls">
@@ -220,6 +237,16 @@ export default function App() {
     <footer><span>SMART REMOTE <b>•</b> v{__APP_VERSION__}</span><span className="footer-status"><span /> {bridgeStatus === 'online' ? 'Ponte ativa' : location.protocol === 'https:' ? 'App web' : 'Rede local'}</span></footer>
 
     {toast && <div className={`toast ${toast.kind}`} role="status"><span className="toast-check">{toast.kind === 'ok' ? <Check size={15} /> : <TriangleAlert size={14} />}</span>{toast.text}</div>}
+    {showInputs && device && INPUT_CHOICES[device.platform] && <div className="modal-backdrop" onClick={() => setShowInputs(false)}>
+      <section className="connect-modal input-modal" role="dialog" aria-modal="true" aria-label="Entradas" onClick={e => e.stopPropagation()}>
+        <div className="modal-heading"><div className="modal-icon"><LogIn size={22} /></div><button className="icon-button" onClick={() => setShowInputs(false)} aria-label="Fechar"><X /></button></div>
+        <p className="eyebrow">ENTRADAS</p>
+        <h2>Escolha a entrada</h2>
+        <div className="input-grid">
+          {INPUT_CHOICES[device.platform]!.map(choice => <button key={choice} onClick={() => chooseInput(choice)}>{choice === 'TV' ? <Tv size={18} /> : <LogIn size={18} />}<span>{choice}</span></button>)}
+        </div>
+      </section>
+    </div>}
     {showSettings && <SettingsModal
       device={device}
       bridge={bridge}
@@ -229,5 +256,7 @@ export default function App() {
       onDeviceSaved={(next, ok) => { setDevice(next); setConnected(ok); }}
       onBridgeSaved={handleBridgeSaved}
     />}
-  </main>;
+  </main>
+  {intro !== 'done' && <Intro targetRef={titleRef} onReveal={() => setIntro('reveal')} onDone={() => setIntro('done')} />}
+  </>;
 }

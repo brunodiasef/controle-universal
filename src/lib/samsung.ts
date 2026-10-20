@@ -108,6 +108,10 @@ export const samsung = {
     method: 'ms.remote.control',
     params: { Cmd: 'Click', DataOfCmd: keymaps.samsung.keys[action], Option: 'false', TypeOfRemote: 'SendRemoteKey' },
   }),
+  input: (ip: string) => send(ip, {
+    method: 'ms.remote.control',
+    params: { Cmd: 'Click', DataOfCmd: keymaps.samsung.input, Option: 'false', TypeOfRemote: 'SendRemoteKey' },
+  }),
   text: (ip: string, text: string) => send(ip, {
     method: 'ms.remote.control',
     params: { Cmd: base64Utf8(text), DataOfCmd: 'base64', TypeOfRemote: 'SendInputString' },

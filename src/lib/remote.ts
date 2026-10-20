@@ -1,6 +1,7 @@
 // Decide por onde cada comando vai: direto do navegador (Samsung, LG, Roku) ou pela ponte no PC
 // (Google TV/Android TV, Philips sem Android, TV Box por ADB). Se o caminho direto falhar
 // e a ponte estiver configurada, tenta a ponte automaticamente.
+import keymaps from '../../shared/keymaps.json';
 import { bridgeRequest, isBridgeReady } from './bridge';
 import { lg } from './lg';
 import { roku } from './roku';
@@ -101,6 +102,30 @@ export async function sendText(ctx: RemoteContext, text: string): Promise<string
     await driver.text(ip, text);
     return platform === 'roku' ? 'Texto enviado.' : 'Texto enviado. Ele aparece se o teclado da TV estiver aberto.';
   }), '/text', { text });
+}
+
+/** Roku e LG trocam direto para a entrada escolhida; os demais só abrem o menu de entradas da TV. */
+export const INPUT_CHOICES: Partial<Record<Platform, string[]>> = {
+  roku: Object.keys(keymaps.roku.inputs),
+  lg: Object.keys(keymaps.lg.inputs),
+};
+
+export function hasInputs(platform: Platform): boolean {
+  return platform !== 'android';
+}
+
+export async function selectInput(ctx: RemoteContext, choice?: string): Promise<string> {
+  const { ip, platform } = ctx.device;
+  if (!hasInputs(platform)) throw new Error('A TV Box não tem entradas. Use as entradas da própria TV.');
+  const extra = choice ? { input: choice } : {};
+  const done = choice ? `Mudando para ${choice}.` : 'Menu de entradas aberto na TV.';
+  if (platform === 'roku' || platform === 'lg') {
+    if (!choice) throw new Error('Escolha uma entrada.');
+    const driver = platform === 'roku' ? roku : lg;
+    return route(ctx, async () => { await driver.input(ip, choice); return done; }, '/input', extra);
+  }
+  if (platform === 'samsung') return route(ctx, async () => { await samsung.input(ip); return done; }, '/input', extra);
+  return route(ctx, null, '/input', extra);
 }
 
 export function pairAdb(bridge: BridgeConfig, ip: string, port: number, code: string) {

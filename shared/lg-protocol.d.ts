@@ -23,6 +23,7 @@ export interface LgClient {
   press(ip: string, key: string): Promise<void>;
   launch(ip: string, appId: string): Promise<void>;
   text(ip: string, text: string): Promise<void>;
+  input(ip: string, inputId: string): Promise<void>;
   close(): void;
 }
 
