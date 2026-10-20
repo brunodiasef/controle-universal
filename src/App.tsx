@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, Volume2, VolumeX, Plus, Minus, Mic, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, Send } from 'lucide-react';
+import primeVideoLogo from './assets/prime-video.png';
 import { BRIDGE_STATUS_TEXT, SettingsModal } from './Settings';
 import { bridgeHealth, BridgeError } from './lib/bridge';
 import { openApp, sendAction, sendText, testDevice, type RemoteContext } from './lib/remote';
@@ -151,7 +152,7 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <div className="brand-lockup"><div className="brand-icon"><Tv size={23} /><span /></div><div><p className="eyebrow">CONTROLE UNIVERSAL</p><h1>Smart<span>Remote</span></h1></div></div>
+      <div className="brand-lockup"><div className="brand-icon"><Tv size={23} /><span /></div><div><p className="eyebrow">CONTROLE</p><h1>Bruno<span>Versal</span></h1></div></div>
       <button className="icon-button settings" aria-label="Configurações" onClick={() => setShowSettings(true)}><Settings2 size={20} /></button>
     </header>
 
@@ -167,9 +168,9 @@ export default function App() {
 
     <section className="section-heading"><div><p className="eyebrow">ATALHOS</p><h2>Abra direto na TV</h2></div></section>
     <section className="streaming-grid">
-      <button className="stream-card netflix" onClick={() => launch('Netflix')}><span className="stream-symbol netflix-symbol">N</span><span className="stream-label">Netflix</span><span className="stream-open">ABRIR ↗</span></button>
-      <button className="stream-card youtube" onClick={() => launch('YouTube')}><span className="youtube-play"><Play size={19} fill="currentColor" /></span><span className="stream-label">YouTube</span><span className="stream-open">ABRIR ↗</span></button>
-      <button className="stream-card prime" onClick={() => launch('Prime Video')}><span className="prime-symbol">prime<span>›</span></span><span className="stream-label">Prime Video</span><span className="stream-open">ABRIR ↗</span></button>
+      <button className="stream-card netflix" onClick={() => launch('Netflix')}><span className="stream-symbol netflix-symbol">N</span><span className="stream-label">Netflix</span></button>
+      <button className="stream-card youtube" onClick={() => launch('YouTube')}><span className="youtube-play"><Play size={19} fill="currentColor" /></span><span className="stream-label">YouTube</span></button>
+      <button className="stream-card prime" onClick={() => launch('Prime Video')}><img className="prime-logo" src={primeVideoLogo} alt="" /><span className="stream-label">Prime Video</span></button>
     </section>
 
     <section className="section-heading remote-heading"><div><p className="eyebrow">CONTROLE PRINCIPAL</p><h2>Seu controle remoto</h2></div><span className={`live-pill ${sent ? 'sent' : ''}`}><span /> {pill}</span></section>
