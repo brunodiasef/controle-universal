@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { LayoutGroup, motion, stagger, useAnimate } from 'motion/react';
 import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, Volume2, VolumeX, Plus, Minus, Mic, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, Send, LogIn, LayoutGrid, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import primeVideoLogo from './assets/prime-video.png';
 import { Intro } from './Intro';
+import { RemoteArt } from './RemoteArt';
 import { BRIDGE_STATUS_TEXT, SettingsModal } from './Settings';
 import { bridgeHealth, BridgeError } from './lib/bridge';
 import { INPUT_CHOICES, hasInputs, openApp, selectInput, sendAction, sendText, testDevice, type RemoteContext } from './lib/remote';
@@ -9,6 +11,11 @@ import { loadBridge, loadDevice, saveBridge } from './lib/storage';
 import { BRIDGE_ONLY, deviceLabel, errorMessage, type BridgeConfig, type BridgeStatus, type Device, type Platform, type RemoteAction, type StreamingApp } from './lib/types';
 
 type Toast = { text: string; kind: 'ok' | 'error' };
+
+// Viagem do controle e do nome até o topo: deslocamento longo, então duração fixa com
+// aceleração e frenagem suaves (easeInOutQuart); o nome sai um instante depois do controle.
+const BRAND_MOVE = { layout: { duration: 0.9, ease: [0.76, 0, 0.24, 1] } } as const;
+const TITLE_MOVE = { layout: { duration: 0.9, ease: [0.76, 0, 0.24, 1], delay: 0.07 } } as const;
 
 // Rótulos dos botões "Smart" e "Menu" conforme o que cada sistema faz com eles.
 const SMART_ICON: Record<string, LucideIcon> = { SMART: LayoutGrid, BUSCAR: Search, AJUSTES: SlidersHorizontal };
@@ -51,13 +58,30 @@ export default function App() {
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [showInputs, setShowInputs] = useState(false);
-  const [intro, setIntro] = useState<'assemble' | 'reveal' | 'done'>('assemble');
-  const titleRef = useRef<HTMLHeadingElement>(null);
+  // Animação de entrada: "intro" (controle se montando) → "morph" (vai para o topo) → "done".
+  const [phase, setPhase] = useState<'intro' | 'morph' | 'done'>(() =>
+    typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'done' : 'intro');
+  const [scope, animate] = useAnimate<HTMLElement>();
+  const skipIntro = useCallback(() => setPhase(p => (p === 'intro' ? 'morph' : p)), []);
   const toastTimer = useRef(0);
   const sentTimer = useRef(0);
   const statusRef = useRef(bridgeStatus);
 
   useEffect(() => { statusRef.current = bridgeStatus; }, [bridgeStatus]);
+
+  useEffect(() => {
+    if (phase === 'done') return;
+    const timer = window.setTimeout(() => setPhase(phase === 'intro' ? 'morph' : 'done'), phase === 'intro' ? 2750 : 1300);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
+  // Enquanto o controle e o nome viajam, o resto do app sobe em sequência (antes de pintar, sem piscar).
+  useLayoutEffect(() => {
+    if (phase !== 'morph' || !scope.current) return;
+    const root = scope.current;
+    const items = [...root.querySelectorAll(':scope > :not(.topbar):not(.toast):not(.modal-backdrop), :scope > .topbar .eyebrow, :scope > .topbar .settings')];
+    animate(items, { opacity: [0, 1], y: [22, 0], scale: [0.985, 1] }, { delay: stagger(0.07, { startDelay: 0.35 }), duration: 0.7, ease: [0.22, 1, 0.36, 1] });
+  }, [phase, animate, scope]);
 
   const notify = useCallback((text: string, kind: 'ok' | 'error' = 'ok') => {
     window.clearTimeout(toastTimer.current);
@@ -169,9 +193,14 @@ export default function App() {
   const smartLabel = device ? BUTTON_LABELS[device.platform].smart : 'SMART';
   const SmartIcon = SMART_ICON[smartLabel] ?? LayoutGrid;
 
-  return <><main className={`app-shell intro-${intro}`}>
+  return <LayoutGroup><main ref={scope} className={`app-shell phase-${phase}`}>
     <header className="topbar">
-      <div className="brand-lockup"><div className="brand-icon"><Tv size={23} /><span /></div><div><p className="eyebrow">CONTROLE</p><h1 ref={titleRef}>Bruno<span>Versal</span></h1></div></div>
+      <div className="brand-lockup">
+        <div className="brand-remote">{phase !== 'intro' && <motion.div layoutId="brand-remote" className="brand-remote-art" transition={BRAND_MOVE}><RemoteArt /></motion.div>}</div>
+        <div><p className="eyebrow">CONTROLE</p><h1>{phase === 'intro'
+          ? <span className="brand-title-ghost">Bruno<span>Versal</span></span>
+          : <motion.span layoutId="brand-title" className="brand-title" transition={TITLE_MOVE}>Bruno<span>Versal</span></motion.span>}</h1></div>
+      </div>
       <button className="icon-button settings" aria-label="Configurações" onClick={() => setShowSettings(true)}><Settings2 size={20} /></button>
     </header>
 
@@ -257,6 +286,6 @@ export default function App() {
       onBridgeSaved={handleBridgeSaved}
     />}
   </main>
-  {intro !== 'done' && <Intro targetRef={titleRef} onReveal={() => setIntro('reveal')} onDone={() => setIntro('done')} />}
-  </>;
+  {phase !== 'done' && <Intro phase={phase} onSkip={skipIntro} />}
+  </LayoutGroup>;
 }
