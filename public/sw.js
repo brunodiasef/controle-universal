@@ -1,6 +1,6 @@
 // Service worker do Smart Remote: permite abrir o app sem internet depois da primeira visita.
 // Nunca intercepta comandos para a TV, para a ponte (/api/) nem para outros endereços.
-const CACHE = 'brunoversal-v4';
+const CACHE = 'brunoversal-v5';
 const CORE = ['./', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', event => {

@@ -44,5 +44,10 @@ export const lg = {
   }),
   input: (ip: string, choice: string) => call(ip, () => client.input(ip, (keymaps.lg.inputs as Record<string, string>)[choice])),
   certificateUrl: (ip: string) => `https://${ip}:3001/`,
+  channel: (ip: string, number: string) => call(ip, async () => {
+    const keys = keymaps.lg.digits as Record<string, string>;
+    for (const ch of number) { if (keys[ch]) { await client.press(ip, keys[ch]); await new Promise(r => setTimeout(r, 150)); } }
+    await client.press(ip, keys.enter);
+  }),
   disconnect: () => client.close(),
 };

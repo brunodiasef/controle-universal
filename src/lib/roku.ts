@@ -24,6 +24,8 @@ export const roku = {
   key: (ip: string, action: RemoteAction) => request(ip, `keypress/${keymaps.roku.keys[action]}`, 'POST'),
   launch: (ip: string, app: StreamingApp) => request(ip, `launch/${keymaps.roku.apps[app][0]}`, 'POST'),
   input: (ip: string, choice: string) => request(ip, `keypress/${(keymaps.roku.inputs as Record<string, string>)[choice]}`, 'POST'),
+  /** Canal: abre a TV ao vivo já no canal ("13" vira 13.1, padrão da TV digital no Brasil). */
+  channel: (ip: string, number: string) => request(ip, `launch/${keymaps.roku.channel}?ch=${encodeURIComponent(number.includes('.') ? number : `${number}.1`)}`, 'POST'),
   /** Digitação ao vivo: letras com Lit_, apagar com Backspace e confirmar com Enter. */
   async type(ip: string, ops: TypeOp[]) {
     for (const op of ops) {

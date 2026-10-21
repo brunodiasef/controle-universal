@@ -136,6 +136,14 @@ export async function selectInput(ctx: RemoteContext, choice?: string): Promise<
   return route(ctx, null, '/input', extra);
 }
 
+/** Vai para um canal digitado ("13" ou "13.1"). */
+export async function goToChannel(ctx: RemoteContext, number: string): Promise<string> {
+  const { ip, platform } = ctx.device;
+  if (!/^\d{1,4}(\.\d{1,2})?$/.test(number)) throw new Error('Digite um número de canal, por exemplo 13 ou 13.1.');
+  const driver = platform === 'roku' ? roku : platform === 'lg' ? lg : platform === 'samsung' ? samsung : null;
+  return route(ctx, driver && (async () => { await driver.channel(ip, number); return `Indo para o canal ${number}.`; }), '/channel', { number });
+}
+
 export function disconnectDevice(device: Device) {
   if (device.platform === 'samsung') samsung.disconnect(device.ip);
   if (device.platform === 'lg') lg.disconnect();

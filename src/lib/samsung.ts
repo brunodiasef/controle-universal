@@ -132,6 +132,15 @@ export const samsung = {
     }
   },
   certificateUrl: (ip: string) => `https://${ip}:8002/api/v2/`,
+  async channel(ip: string, number: string) {
+    const keys = keymaps.samsung.digits as Record<string, string>;
+    for (const ch of number) {
+      if (!keys[ch]) continue;
+      await send(ip, { method: 'ms.remote.control', params: { Cmd: 'Click', DataOfCmd: keys[ch], Option: 'false', TypeOfRemote: 'SendRemoteKey' } });
+      await new Promise(r => setTimeout(r, 150));
+    }
+    await send(ip, { method: 'ms.remote.control', params: { Cmd: 'Click', DataOfCmd: keys.enter, Option: 'false', TypeOfRemote: 'SendRemoteKey' } });
+  },
   disconnect(ip: string) {
     const ws = sockets.get(ip);
     sockets.delete(ip);

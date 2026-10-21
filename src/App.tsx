@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { LayoutGroup, motion, stagger, useAnimate } from 'motion/react';
-import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, VolumeX, Plus, Minus, Hand, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, CircleHelp, TriangleAlert, LogIn, LayoutGrid, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { Power, Wifi, WifiOff, Settings2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Home, ArrowLeft, Menu, VolumeX, Plus, Minus, Hand, Keyboard, Play, Pause, SkipBack, SkipForward, Tv, Search, Check, X, TriangleAlert, LogIn, LayoutGrid, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import primeVideoLogo from './assets/prime-video.png';
 import { Intro } from './Intro';
 import { TouchPad } from './TouchPad';
+import { ChannelPad } from './ChannelPad';
 import { TypePanel } from './TypePanel';
 import { RemoteArt } from './RemoteArt';
 import { BRIDGE_STATUS_TEXT, SettingsModal } from './Settings';
 import { bridgeHealth, BridgeError } from './lib/bridge';
-import { INPUT_CHOICES, disconnectDevice, hasInputs, openApp, selectInput, sendAction, testDevice, typeOps, type RemoteContext } from './lib/remote';
+import { INPUT_CHOICES, disconnectDevice, goToChannel, hasInputs, openApp, selectInput, sendAction, testDevice, typeOps, type RemoteContext } from './lib/remote';
 import { forgetDevice, loadBridge, loadDevice, saveBridge } from './lib/storage';
 import { BRIDGE_ONLY, TYPING_MODE, deviceLabel, errorMessage, type BridgeConfig, type BridgeStatus, type Device, type Platform, type RemoteAction, type StreamingApp } from './lib/types';
 
@@ -31,24 +32,6 @@ const BUTTON_LABELS: Record<Platform, { smart: string; menu: string }> = {
   android: { smart: 'BUSCAR', menu: 'MENU' },
 };
 
-function helpText(device: Device | null, bridgeStatus: BridgeStatus): string {
-  if (!device) return 'Toque em Conectar, escolha a marca da TV (Samsung, LG, TCL, AOC, Philips, Roku ou Elsys) e informe o IP.';
-  const https = location.protocol === 'https:';
-  if (BRIDGE_ONLY.includes(device.platform)) {
-    return bridgeStatus === 'online'
-      ? 'Esta TV recebe os comandos pela ponte no PC, que está ativa.'
-      : 'Esta TV precisa da ponte no PC: abra o iniciar-windows.bat e informe o endereço e o código em Configurações › Ponte no PC.';
-  }
-  if (device.platform === 'roku') {
-    return https
-      ? 'O Roku recebe os comandos direto deste navegador (Chrome no PC ou Android). Se o Chrome perguntar, permita "Acesso à rede local".'
-      : 'O Roku recebe os comandos direto deste navegador.';
-  }
-  return https
-    ? 'Pelo site do GitHub: toque uma vez em Configurações › "Autorizar certificado da TV" e aceite o aviso. Se não der, a ponte no PC assume.'
-    : 'Na primeira vez a TV pede permissão na tela: aceite com o controle original.';
-}
-
 export default function App() {
   const [device, setDevice] = useState<Device | null>(loadDevice);
   const [bridge, setBridge] = useState<BridgeConfig>(loadBridge);
@@ -60,6 +43,7 @@ export default function App() {
   const [sent, setSent] = useState(false);
   const [typing, setTyping] = useState(false);
   const [showTouch, setShowTouch] = useState(false);
+  const [showChannelPad, setShowChannelPad] = useState(false);
   const typeInputRef = useRef<HTMLInputElement>(null);
   const [showInputs, setShowInputs] = useState(false);
   // Animação de entrada: "intro" (controle se montando) → "morph" (vai para o topo) → "done".
@@ -195,11 +179,13 @@ export default function App() {
     return refreshBridge(config);
   }
 
-  const bridgeClass = bridgeStatus === 'online' ? 'online' : bridgeStatus === 'checking' ? 'checking' : bridgeStatus === 'off' ? 'idle' : '';
-  const bridgeLine = bridgeStatus === 'off'
-    ? (device && BRIDGE_ONLY.includes(device.platform) ? '● Ponte no PC: necessária para esta TV' : '● Ponte no PC: opcional, não configurada')
+  // A linha da ponte só aparece quando importa: TV que precisa dela, ou ponte ativa.
+  const needsBridge = Boolean(device && BRIDGE_ONLY.includes(device.platform));
+  const bridgeClass = bridgeStatus === 'online' ? 'online' : bridgeStatus === 'checking' ? 'checking' : '';
+  const bridgeLine = bridgeStatus === 'online' ? '● Ponte ativa'
+    : !needsBridge ? null
+    : bridgeStatus === 'off' ? '● Precisa da ponte no PC'
     : `● ${BRIDGE_STATUS_TEXT[bridgeStatus]}`;
-  const pill = busy ? 'ENVIANDO' : sent ? 'ENVIADO' : connected ? 'CONECTADO' : device ? 'PRONTO' : 'SEM TV';
 
   const smartLabel = device ? BUTTON_LABELS[device.platform].smart : 'SMART';
   const SmartIcon = SMART_ICON[smartLabel] ?? LayoutGrid;
@@ -215,39 +201,37 @@ export default function App() {
       <button className="icon-button settings" aria-label="Configurações" onClick={() => setShowSettings(true)}><Settings2 size={20} /></button>
     </header>
 
-    <section className={`connection-card ${connected ? 'is-connected' : ''}`}>
-      <div className="connection-mark">{connected ? <Wifi size={21} /> : <WifiOff size={21} />}</div>
+    <section className={`connection-card ${connected ? 'is-connected' : ''} ${sent || busy ? 'sent' : ''}`}>
+      <div className="connection-mark">{connected ? <Wifi size={17} /> : <WifiOff size={17} />}</div>
       <div className="connection-copy">
-        <strong>{connected ? 'Equipamento conectado' : device ? 'Equipamento salvo, sem resposta ainda' : 'Configure seu dispositivo'}</strong>
-        <span>{device ? `${deviceLabel(device)} • ${device.ip}` : 'Samsung, LG, TCL, AOC, Philips, Roku ou Elsys'}</span>
-        <small className={`bridge-indicator ${bridgeClass}`}>{bridgeLine}</small>
+        <strong>{connected ? 'Conectado' : device ? 'Sem resposta ainda' : 'Nenhuma TV'}</strong>
+        <span>{device ? `${deviceLabel(device)} • ${device.ip}` : 'Toque em Conectar'}</span>
+        {bridgeLine && <small className={`bridge-indicator ${bridgeClass}`}>{bridgeLine}</small>}
       </div>
-      <button className="connect-button" onClick={() => setShowSettings(true)}>{device ? 'Gerenciar' : 'Conectar'} <span>＋</span></button>
+      <button className="connect-button" onClick={() => setShowSettings(true)}>{device ? 'Gerenciar' : 'Conectar'}</button>
     </section>
 
-    <section className="section-heading"><div><p className="eyebrow">ATALHOS</p><h2>Abra direto na TV</h2></div></section>
-    <section className="streaming-grid">
-      <button className="stream-card netflix" onClick={() => launch('Netflix')}><span className="stream-symbol netflix-symbol">N</span><span className="stream-label">Netflix</span></button>
-      <button className="stream-card youtube" onClick={() => launch('YouTube')}><span className="youtube-play"><Play size={19} fill="currentColor" /></span><span className="stream-label">YouTube</span></button>
-      <button className="stream-card prime" onClick={() => launch('Prime Video')}><img className="prime-logo" src={primeVideoLogo} alt="" /><span className="stream-label">Prime Video</span></button>
+    <section className="streaming-grid" aria-label="Atalhos">
+      <button className="stream-card netflix" onClick={() => launch('Netflix')} aria-label="Abrir Netflix"><span className="stream-symbol netflix-symbol">N</span></button>
+      <button className="stream-card youtube" onClick={() => launch('YouTube')} aria-label="Abrir YouTube"><span className="youtube-play"><Play size={15} fill="currentColor" /></span></button>
+      <button className="stream-card prime" onClick={() => launch('Prime Video')} aria-label="Abrir Prime Video"><img className="prime-logo" src={primeVideoLogo} alt="" /></button>
     </section>
 
-    <section className="section-heading remote-heading"><div><p className="eyebrow">CONTROLE PRINCIPAL</p><h2>Seu controle remoto</h2></div><span className={`live-pill ${sent ? 'sent' : ''}`}><span /> {pill}</span></section>
     <section className="remote-card">
       <div className="remote-top"><span className="remote-mini-label"><Tv size={15} /><span>{device ? deviceLabel(device).toUpperCase() : 'SMART TV / TV BOX'}</span></span><div className="remote-top-actions">{(!device || hasInputs(device.platform)) && <button className="input-button" aria-label="Entradas" onClick={openInputs}><LogIn size={17} /><span>ENTRADAS</span></button>}<button className="power-button" aria-label="Ligar ou desligar" onClick={() => press('Power')}><Power size={21} /></button></div></div>
       <div className="quick-actions">
-        <button onClick={() => (smartLabel === 'BUSCAR' ? openTyping(true) : press('Smart'))} className="quick-action"><SmartIcon size={20} /><span>{smartLabel}</span></button>
-        <button onClick={() => press('Home')} className="quick-action"><Home size={20} /><span>HOME</span></button>
-        <button onClick={() => press('Back')} className="quick-action"><ArrowLeft size={20} /><span>VOLTAR</span></button>
-        <button onClick={() => press('Menu')} className="quick-action"><Menu size={20} /><span>{device ? BUTTON_LABELS[device.platform].menu : 'MENU'}</span></button>
+        <button onClick={() => (smartLabel === 'BUSCAR' ? openTyping(true) : press('Smart'))} className="quick-action" aria-label={smartLabel}><SmartIcon size={22} /></button>
+        <button onClick={() => press('Home')} className="quick-action" aria-label="HOME"><Home size={22} /></button>
+        <button onClick={() => press('Back')} className="quick-action" aria-label="VOLTAR"><ArrowLeft size={22} /></button>
+        <button onClick={() => press('Menu')} className="quick-action" aria-label={device ? BUTTON_LABELS[device.platform].menu : 'MENU'}><Menu size={22} /></button>
       </div>
       <div className="control-body">
         <div className="side-control">
           <div className="vertical-control">
             <button onClick={() => press('VolumeUp')} aria-label="Aumentar volume"><Plus /></button>
-            <button className="pill-middle" onClick={() => press('Mute')} aria-label="Silenciar ou reativar o som"><VolumeX /></button>
             <button onClick={() => press('VolumeDown')} aria-label="Diminuir volume"><Minus /></button>
           </div>
+          <button className="side-extra" onClick={() => press('Mute')} aria-label="Silenciar ou reativar o som"><VolumeX /></button>
         </div>
         <div className="dpad" aria-label="Controle direcional">
           <button className="dpad-up" onClick={() => press('Up')} aria-label="Cima"><ChevronUp /></button>
@@ -259,9 +243,9 @@ export default function App() {
         <div className="side-control">
           <div className="vertical-control">
             <button onClick={() => press('ChannelUp')} aria-label="Canal seguinte"><Plus /></button>
-            <span className="pill-label">CH</span>
             <button onClick={() => press('ChannelDown')} aria-label="Canal anterior"><Minus /></button>
           </div>
+          <button className="side-extra pill-channel" onClick={() => (device ? setShowChannelPad(true) : openTyping(false))} aria-label="Digitar número do canal"><span>CH</span><b>123</b></button>
         </div>
       </div>
       <div className="media-controls">
@@ -274,7 +258,6 @@ export default function App() {
       </div>
     </section>
 
-    <section className="help-card"><CircleHelp size={17} /><span>{helpText(device, bridgeStatus)}</span></section>
     <footer><span>BRUNOVERSAL <b>•</b> v{__APP_VERSION__}</span><span className="footer-status"><span /> {bridgeStatus === 'online' ? 'Ponte ativa' : location.protocol === 'https:' ? 'App web' : 'Rede local'}</span></footer>
 
     {toast && <div className={`toast ${toast.kind}`} role="status"><span className="toast-check">{toast.kind === 'ok' ? <Check size={15} /> : <TriangleAlert size={14} />}</span>{toast.text}</div>}
@@ -288,6 +271,11 @@ export default function App() {
         </div>
       </section>
     </div>}
+    {showChannelPad && device && <ChannelPad
+      allowDot={device.platform !== 'samsung'}
+      onGo={number => run(ctx => goToChannel(ctx, number))}
+      onClose={() => setShowChannelPad(false)}
+    />}
     {showTouch && device && <TouchPad
       onAction={action => run(ctx => sendAction(ctx, action), true)}
       onKeyboard={TYPING_MODE[device.platform] ? () => openTyping(false) : null}

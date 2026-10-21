@@ -468,6 +468,26 @@ async function typeOps(device, rawOps) {
   }
   return 'ok';
 }
+async function goToChannel(device, number) {
+  const { platform, ip } = device;
+  if (typeof number !== 'string' || !/^\d{1,4}(\.\d{1,2})?$/.test(number)) throw new HttpError(400, 'Digite um número de canal, por exemplo 13 ou 13.1.');
+  if (platform === 'roku') {
+    const ch = number.includes('.') ? number : `${number}.1`;
+    await rokuPost(ip, `launch/${keymaps.roku.channel}?ch=${encodeURIComponent(ch)}`);
+    return `Indo para o canal ${ch}.`;
+  }
+  const keys = keymaps[platform].digits;
+  const sequence = [...number].map(ch => keys[ch]).filter(k => k !== undefined).concat(keys.enter);
+  for (const key of sequence) {
+    if (platform === 'samsung') await samsung.key(ip, key);
+    else if (platform === 'lg') await lgCall(() => lg.press(ip, key));
+    else if (platform === 'googletv') await googleTvCall(() => googleTv.key(ip, key));
+    else if (platform === 'philips') await philipsCall(() => philipsKey(ip, key));
+    else await adbShell(device, ['input', 'keyevent', key]);
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return `Indo para o canal ${number}.`;
+}
 async function selectInput(device, choice) {
   const { platform, ip } = device;
   const map = keymaps[platform];
@@ -530,6 +550,7 @@ const routes = {
   'POST /api/command': async body => ({ ok: true, message: await command(parseDevice(body), body.action) }),
   'POST /api/app': async body => ({ ok: true, message: await launchApp(parseDevice(body), body.app) }),
   'POST /api/text': async body => ({ ok: true, message: await sendText(parseDevice(body), body.text) }),
+  'POST /api/channel': async body => ({ ok: true, message: await goToChannel(parseDevice(body), body.number) }),
   'POST /api/type': async body => ({ ok: true, message: await typeOps(parseDevice(body), body.ops) }),
   'POST /api/input': async body => ({ ok: true, message: await selectInput(parseDevice(body), body.input) }),
   'POST /api/adb-pair': async body => ({ ok: true, message: await pairAdb(body) }),
